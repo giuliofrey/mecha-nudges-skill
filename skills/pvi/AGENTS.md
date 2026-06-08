@@ -27,8 +27,8 @@ constrained via `logit_bias` (the paper's masking trick), so the distribution is
 smooth and fine-grained - exactly what `optimize` needs to detect small gains.
 Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
 
-- Pick the model with `--model` (default `gpt-4o-mini`). It **must** support
-  `logprobs` + `logit_bias` (`gpt-4o-mini`, `gpt-4o`).
+- Set the scorer with `--model <name>` or `$PVI_MODEL` (no default). It **must**
+  support `logprobs` + `logit_bias` on the Chat Completions API.
 - **Absolute PVI is not comparable across models.** Compare only within one
   `--model`. To sanity-check a finding, re-run with a different `--model` and look
   at the *direction/ranking*, not the bits.
@@ -46,7 +46,9 @@ Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
    `! export OPENAI_API_KEY=...`, drop `OPENAI_API_KEY=sk-...` into
    `~/.config/pvi/.env` (gitignored; safest - no shell history), or pass
    `--api-key sk-...` per command (warn it shows up in shell history / `ps`).
-4. Commands run from any directory — the baseline cache lives in
+4. Set a scorer model with `--model <name>` or `PVI_MODEL` — there is **no
+   default**, and it must support logprobs + logit_bias. The user tells you which.
+5. Commands run from any directory — the baseline cache lives in
    `~/.config/pvi/cache/` (override the location with `PVI_HOME`).
 
 ## Step 1 - always define the task first
@@ -117,7 +119,7 @@ rewrites primed with the helping/diluting words -> score each -> keep the best -
 stop when a round yields no improvement.
 
 If it doesn't improve:
-- Weak rewriter: raise `--gen-model` (e.g. `gpt-4o`).
+- Weak rewriter: switch `--gen-model` to a stronger model.
 - Too few tries: raise `--candidates` (8-12) and `--rounds` (4-5).
 - Genuinely saturated: the text may already be near the agent's ceiling - say so.
 
@@ -138,7 +140,7 @@ If it doesn't improve:
 - `Warning: labels 'X' and 'Y' start with the same token` (stderr) - fix the task
   labels to have distinct first words; results between them are unreliable.
 - A model without `logprobs`/`logit_bias` support will error from the OpenAI API;
-  switch `--model` to `gpt-4o-mini` or `gpt-4o`.
+  switch `--model` to one that supports both.
 
 ## Cost & latency
 

@@ -25,9 +25,9 @@ model call (the empty-input baseline is computed once and cached).
 
 P(label) comes from the **OpenAI API**: true label logprobs with the labels
 constrained via `logit_bias` (the paper's masking trick) - smooth and faithful.
-Pick the model with `--model` (default `gpt-4o-mini`; it must support `logprobs`
-+ `logit_bias`, e.g. `gpt-4o-mini`, `gpt-4o`). Absolute PVI is **not** comparable
-across models - compare only within one `--model`.
+Set the scorer with `--model <name>` or `$PVI_MODEL` (there is no default); it
+must support `logprobs` + `logit_bias` on the Chat Completions API. Absolute PVI
+is **not** comparable across models - compare only within one `--model`.
 
 ## Setup
 

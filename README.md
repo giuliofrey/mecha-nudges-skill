@@ -35,8 +35,8 @@ cached (in `~/.config/pvi/cache/`). After that, scoring any text is one model ca
 
 P(label) comes from the **OpenAI API**: true token logprobs with the labels
 constrained via `logit_bias` (the paper's masking trick), giving a smooth,
-faithful signal. Choose the model with `--model` (default `gpt-4o-mini`); it must
-support `logprobs` + `logit_bias` (`gpt-4o-mini`, `gpt-4o`).
+faithful signal. Set the model with `--model <name>` or `$PVI_MODEL` (no default);
+it must support `logprobs` + `logit_bias` on the Chat Completions API.
 
 Absolute PVI is **not** comparable across models — compare within one `--model`.
 
@@ -123,7 +123,8 @@ Keep `labels` short, single-word, and with **distinct first letters**.
 ## Use
 
 Global flags go **before** the subcommand. In a terminal you get readable output;
-piped or used by an agent you get JSON (override with `--format`).
+piped or used by an agent you get JSON (override with `--format`). Set a scorer
+model first with `--model <name>` or `export PVI_MODEL=<name>`.
 
 ```bash
 # Score one text
@@ -138,8 +139,8 @@ pvi --task task.json attribute --text "..."
 # Rewrite to raise PVI toward target_label
 pvi --task task.json optimize --text "..." --rounds 3 --candidates 5
 
-# Score with a stronger model
-pvi --task task.json --model gpt-4o score --text "..."
+# Score with a specific model (or set PVI_MODEL once)
+pvi --task task.json --model <model-name> score --text "..."
 ```
 
 Flags: `--model`, `--gen-model` (optimize rewriter), `--rounds`, `--candidates`,
@@ -164,8 +165,8 @@ stronger `--gen-model`.
 
 ## Model requirements
 
-The scorer needs an OpenAI model that supports `logprobs` + `logit_bias`
-(`gpt-4o-mini`, `gpt-4o`). The optimize rewriter (`--gen-model`) can be any chat
+The scorer needs an OpenAI model that supports `logprobs` + `logit_bias` on the
+Chat Completions API. The optimize rewriter (`--gen-model`) can be any chat
 model; it defaults to the scorer model.
 
 ## For AI agents

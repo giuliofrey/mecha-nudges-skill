@@ -449,8 +449,9 @@ def main():
         description="Measure and optimize text for an AI agent's decision (pseudo-PVI).",
         epilog="Run the 'init' command first if you don't have a task file yet.",
     )
-    ap.add_argument("--model", default="gpt-4o-mini",
-                    help="OpenAI scorer model (needs logprobs + logit_bias; default gpt-4o-mini).")
+    ap.add_argument("--model",
+                    help="OpenAI scorer model. Must support logprobs + logit_bias on the "
+                         "Chat Completions API. Falls back to $PVI_MODEL.")
     ap.add_argument("--api-key", help="OpenAI API key. Overrides OPENAI_API_KEY and .env. "
                     "Note: visible in shell history and `ps`; a .env file is safer.")
     ap.add_argument("--task", help="Task JSON file path or inline JSON. (Created by 'init'.)")
@@ -496,7 +497,11 @@ def main():
         sys.exit("[pvi] --task is required. Run 'python pvi.py init' to create one.")
 
     task = load_task(args.task)
-    backend = OpenAIBackend(args.model)
+    model = args.model or os.environ.get("PVI_MODEL")
+    if not model:
+        sys.exit("[pvi] No scorer model set. Pass --model <name> or set PVI_MODEL. "
+                 "It must support logprobs + logit_bias on the Chat Completions API.")
+    backend = OpenAIBackend(model)
     baseline = compute_baseline(backend, task, use_cache=not args.no_cache)
 
     if args.cmd == "baseline":
