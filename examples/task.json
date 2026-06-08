@@ -1,0 +1,6 @@
+{
+  "name": "buy-or-skip",
+  "question": "You are an autonomous shopping agent. Based only on the product text, do you BUY this product or SKIP it?",
+  "labels": ["BUY", "SKIP"],
+  "target_label": "BUY"
+}

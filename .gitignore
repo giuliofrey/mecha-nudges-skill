@@ -1,0 +1,4 @@
+.pvi_cache/
+__pycache__/
+.venv/
+*.pyc
