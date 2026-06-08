@@ -1,9 +1,9 @@
 {
-  "name": "pvi-skill",
+  "name": "mecha-nudges",
   "owner": { "name": "Giulio Frey" },
   "plugins": [
     {
-      "name": "pvi",
+      "name": "mecha-nudge",
       "source": "./",
       "description": "Measure & optimize how much a text informs an AI agent's decision (pseudo-PVI). Score, attribute which words matter, and rewrite text toward a target decision.",
       "version": "0.1.0"

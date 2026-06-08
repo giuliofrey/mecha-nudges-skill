@@ -1,13 +1,13 @@
 ---
-name: pvi
+name: mecha-nudge
 description: "Measure and optimize how much a piece of text informs an AI agent's decision, using pointwise V-information (PVI). Use when the user wants to (1) score how 'machine-readable' or persuasive-to-AI a text is, (2) see which words/phrases drive an AI's decision, or (3) rewrite text so an AI agent is more likely to make a target decision (a 'mecha-nudge'). Triggers on 'PVI', 'V-information', 'optimize for AI', 'make this rank with AI agents', 'how informative is this to an LLM', 'mecha-nudge'."
 ---
 
-# PVI Skill
+# Mecha-nudge Skill
 
 Guide a non-technical user through measuring and optimizing text for an AI
 agent's decision, using **pseudo-PVI**. The user never has to write code; you run
-the `pvi.py` CLI and explain the results in plain language.
+the `mecha_nudge.py` CLI and explain the results in plain language.
 
 Companion to *Mecha-nudges for Machines* (Frey & Ethayarajh, 2026).
 **Read `AGENTS.md` for the full reference** (math, every flag, decision tree,
@@ -25,35 +25,35 @@ model call (the empty-input baseline is computed once and cached).
 
 P(label) comes from the **OpenAI API**: true label logprobs with the labels
 constrained via `logit_bias` (the paper's masking trick) - smooth and faithful.
-Set the scorer with `--model <name>` or `$PVI_MODEL` (there is no default); it
+Set the scorer with `--model <name>` or `$MECHA_NUDGE_MODEL` (there is no default); it
 must support `logprobs` + `logit_bias` on the Chat Completions API. Absolute PVI
 is **not** comparable across models - compare only within one `--model`.
 
 ## Setup
 
 Install deps with `pip install -r requirements.txt` (from this skill dir), or
-`pip install pvi-skill` / `pip install "git+<repo-url>"` to also get a `pvi`
+`pip install mecha-nudge` / `pip install "git+<repo-url>"` to also get a `mecha-nudge`
 command on PATH.
 
 **Invoking the CLI** (commands run from anywhere — the cache is global):
-- pip-installed: `pvi …`
-- as a Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/pvi/pvi.py" …`
-- plain skill / clone: `python pvi.py` from this folder.
+- pip-installed: `mecha-nudge …`
+- as a Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/mecha-nudge/mecha_nudge.py" …`
+- plain skill / clone: `python mecha_nudge.py` from this folder.
 
 **OpenAI key** — supply one of (precedence:
-`--api-key` > `OPENAI_API_KEY` env var > `./.env` > `~/.config/pvi/.env`):
+`--api-key` > `OPENAI_API_KEY` env var > `./.env` > `~/.config/mecha-nudge/.env`):
 - `! export OPENAI_API_KEY=sk-...`
-- `OPENAI_API_KEY=sk-...` in `~/.config/pvi/.env` (persistent; gitignored) or a
-  local `./.env` (`cp .env.example ~/.config/pvi/.env`)
+- `OPENAI_API_KEY=sk-...` in `~/.config/mecha-nudge/.env` (persistent; gitignored) or a
+  local `./.env` (`cp .env.example ~/.config/mecha-nudge/.env`)
 - `--api-key sk-...` on the command (warn: lands in shell history / `ps`)
 
 ## Workflow
 
 ### 1. Define the task (always first)
 If the user has no task file, run the wizard or write the JSON yourself
-(`pvi` below = whichever invocation from Setup applies):
+(`mecha-nudge` below = whichever invocation from Setup applies):
 ```
-pvi init          # asks: name, question, options, target -> writes task.json
+mecha-nudge init          # asks: name, question, options, target -> writes task.json
 ```
 Fields: `name`, `question` (the decision phrased to the agent), `labels` (short,
 single words, **distinct first letters**), `target_label` (the choice to optimize
@@ -63,10 +63,10 @@ toward; required for `optimize`).
 
 | User wants | Command |
 |---|---|
-| Score one text | `pvi --task task.json score --text "..."` |
-| Score a dataset (V-info) | `pvi --task task.json score --data data.jsonl --text-field text` |
-| See which words matter | `pvi --task task.json attribute --text "..."` |
-| Improve the text | `pvi --task task.json optimize --text "..."` |
+| Score one text | `mecha-nudge --task task.json score --text "..."` |
+| Score a dataset (V-info) | `mecha-nudge --task task.json score --data data.jsonl --text-field text` |
+| See which words matter | `mecha-nudge --task task.json attribute --text "..."` |
+| Improve the text | `mecha-nudge --task task.json optimize --text "..."` |
 
 Flags: `--model`, `--gen-model` (optimize rewriter), `--rounds`,
 `--candidates`, `--format {auto,json,human}`, `--no-cache`.
@@ -83,5 +83,5 @@ original->best for `optimize`. Output schemas are in `AGENTS.md`.
 2. **Check faithfulness.** `optimize` can drift; review rewrites.
 
 ## Notes
-- Baseline cached in `~/.config/pvi/cache/` per task+model; `--no-cache` recomputes.
-- No task yet? `pvi init`, or adapt `examples/task.json`.
+- Baseline cached in `~/.config/mecha-nudge/cache/` per task+model; `--no-cache` recomputes.
+- No task yet? `mecha-nudge init`, or adapt `examples/task.json`.

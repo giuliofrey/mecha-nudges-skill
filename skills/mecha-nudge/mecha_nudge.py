@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-pvi - measure and optimize how much a piece of text informs an AI agent's decision.
+mecha-nudge - measure and optimize how much a piece of text informs an AI agent's decision.
 
 Companion tool to "Mecha-nudges for Machines" (Frey & Ethayarajh, 2026).
 
@@ -57,12 +57,12 @@ def load_task(spec: str) -> dict:
     try:
         task = json.loads(raw)
     except json.JSONDecodeError as e:
-        sys.exit(f"[pvi] Could not parse task ('{spec}'): {e}")
+        sys.exit(f"[mecha-nudge] Could not parse task ('{spec}'): {e}")
     for field in ("question", "labels"):
         if field not in task:
-            sys.exit(f"[pvi] Task is missing required field '{field}'.")
+            sys.exit(f"[mecha-nudge] Task is missing required field '{field}'.")
     if len(task["labels"]) < 2:
-        sys.exit("[pvi] Task needs at least two labels.")
+        sys.exit("[mecha-nudge] Task needs at least two labels.")
     return task
 
 
@@ -117,18 +117,19 @@ class OpenAIBackend:
         return resp.choices[0].message.content or ""
 
 
-def pvi_home() -> Path:
+def config_home() -> Path:
     """Directory holding the baseline cache and the global .env.
-    Override with PVI_HOME; else $XDG_CONFIG_HOME/pvi (default ~/.config/pvi)."""
-    override = os.environ.get("PVI_HOME")
+    Override with MECHA_NUDGE_HOME; else $XDG_CONFIG_HOME/mecha-nudge
+    (default ~/.config/mecha-nudge)."""
+    override = os.environ.get("MECHA_NUDGE_HOME")
     if override:
         return Path(override).expanduser()
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base).expanduser() / "pvi"
+    return Path(base).expanduser() / "mecha-nudge"
 
 
 def cache_dir() -> Path:
-    return pvi_home() / "cache"
+    return config_home() / "cache"
 
 
 def _load_dotenv_file(p: Path) -> None:
@@ -146,19 +147,19 @@ def _load_dotenv_file(p: Path) -> None:
 
 def _load_dotenv() -> None:
     """Fill os.environ from .env files (KEY=value lines) without overriding the
-    real environment. A local ./.env wins over the global ~/.config/pvi/.env."""
+    real environment. A local ./.env wins over ~/.config/mecha-nudge/.env."""
     _load_dotenv_file(Path(".env"))
-    _load_dotenv_file(pvi_home() / ".env")
+    _load_dotenv_file(config_home() / ".env")
 
 
 def _openai_client():
     if not os.environ.get("OPENAI_API_KEY"):
-        sys.exit("[pvi] No OpenAI key found. Pass --api-key sk-..., set OPENAI_API_KEY, "
-                 "or put OPENAI_API_KEY=sk-... in a .env file (./.env or ~/.config/pvi/.env).")
+        sys.exit("[mecha-nudge] No OpenAI key found. Pass --api-key sk-..., set OPENAI_API_KEY, "
+                 "or put OPENAI_API_KEY=sk-... in a .env file (./.env or ~/.config/mecha-nudge/.env).")
     try:
         from openai import OpenAI
     except ImportError:
-        sys.exit("[pvi] Install deps: pip install openai tiktoken")
+        sys.exit("[mecha-nudge] Install deps: pip install openai tiktoken")
     return OpenAI()
 
 
@@ -191,7 +192,7 @@ def _id_to_label(labels: list[str], enc) -> dict[int, str]:
         for tid in _first_token_ids(lab, enc):
             if tid in mapping and mapping[tid] != lab and not _warned_collision:
                 print(
-                    f"[pvi] Warning: labels '{mapping[tid]}' and '{lab}' start with the "
+                    f"[mecha-nudge] Warning: labels '{mapping[tid]}' and '{lab}' start with the "
                     "same token; scores between them will be unreliable. Choose labels "
                     "with distinct first words.",
                     file=sys.stderr,
@@ -325,7 +326,7 @@ def _gen_candidates(backend, gen_model, task, text, target, hints, k) -> list[st
 def optimize(backend, task, text, baseline, gen_model=None, rounds=3, candidates=5, workers=8) -> dict:
     target = task.get("target_label")
     if not target:
-        sys.exit("[pvi] optimize needs a 'target_label' in the task (the decision to optimize toward).")
+        sys.exit("[mecha-nudge] optimize needs a 'target_label' in the task (the decision to optimize toward).")
 
     current = text
     current_score = score_text(backend, task, current, baseline)
@@ -414,14 +415,14 @@ def format_human(cmd: str, out: dict) -> str:
 # ===========================================================================
 # Interactive task builder (so non-coders never touch JSON)
 # ===========================================================================
-def run_init(dest: str, prog: str = "pvi"):
+def run_init(dest: str, prog: str = "mecha-nudge"):
     print("Let's define the decision your AI agent makes.\n")
     name = input("Short name for this task (e.g. buy-or-skip): ").strip() or "task"
     question = input("The decision, phrased to the agent\n  (e.g. 'You are a shopping agent. Based only on this text, BUY or SKIP?'):\n  ").strip()
     raw_labels = input("The options, comma-separated (short, distinct words, e.g. BUY, SKIP): ").strip()
     labels = [l.strip() for l in raw_labels.split(",") if l.strip()]
     if len(labels) < 2 or not question:
-        sys.exit("[pvi] Need a question and at least two labels.")
+        sys.exit("[mecha-nudge] Need a question and at least two labels.")
     target = input(f"Optimize toward which option? (one of {', '.join(labels)}; blank = none): ").strip()
     task = {"name": name, "question": question, "labels": labels}
     if target:
@@ -451,7 +452,7 @@ def main():
     )
     ap.add_argument("--model",
                     help="OpenAI scorer model. Must support logprobs + logit_bias on the "
-                         "Chat Completions API. Falls back to $PVI_MODEL.")
+                         "Chat Completions API. Falls back to $MECHA_NUDGE_MODEL.")
     ap.add_argument("--api-key", help="OpenAI API key. Overrides OPENAI_API_KEY and .env. "
                     "Note: visible in shell history and `ps`; a .env file is safer.")
     ap.add_argument("--task", help="Task JSON file path or inline JSON. (Created by 'init'.)")
@@ -494,12 +495,12 @@ def main():
         return
 
     if not args.task:
-        sys.exit("[pvi] --task is required. Run 'python pvi.py init' to create one.")
+        sys.exit("[mecha-nudge] --task is required. Run the 'init' command to create one.")
 
     task = load_task(args.task)
-    model = args.model or os.environ.get("PVI_MODEL")
+    model = args.model or os.environ.get("MECHA_NUDGE_MODEL")
     if not model:
-        sys.exit("[pvi] No scorer model set. Pass --model <name> or set PVI_MODEL. "
+        sys.exit("[mecha-nudge] No scorer model set. Pass --model <name> or set MECHA_NUDGE_MODEL. "
                  "It must support logprobs + logit_bias on the Chat Completions API.")
     backend = OpenAIBackend(model)
     baseline = compute_baseline(backend, task, use_cache=not args.no_cache)
@@ -521,7 +522,7 @@ def main():
         elif args.text:
             out = score_text(backend, task, args.text, baseline)
         else:
-            sys.exit("[pvi] score needs --text or --data.")
+            sys.exit("[mecha-nudge] score needs --text or --data.")
     elif args.cmd == "attribute":
         out = attribute(backend, task, args.text, baseline, args.granularity, args.workers)
     elif args.cmd == "optimize":

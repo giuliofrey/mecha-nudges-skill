@@ -3,13 +3,13 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pvi-skill"
+name = "mecha-nudge"
 version = "0.1.0"
 description = "Measure and optimize how much a piece of text informs an AI agent's decision (pseudo-PVI)."
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Giulio Frey" }]
-keywords = ["pvi", "v-information", "llm", "prompt-optimization", "openai", "mecha-nudge"]
+keywords = ["mecha-nudge", "pvi", "v-information", "llm", "prompt-optimization", "openai"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Operating System :: OS Independent",
@@ -21,14 +21,14 @@ dependencies = [
 # license: add `license = { text = "MIT" }` (and a LICENSE file) once you pick one.
 
 [project.scripts]
-pvi = "pvi:main"
+mecha-nudge = "mecha_nudge:main"
 
 [project.urls]
 Homepage = "https://giuliofrey.eu/mecha-nudges/"
 
-# The CLI is a single module, pvi.py, living next to the skill it powers
-# (skills/pvi/). package-dir maps that folder to the import root so `pip install`
-# exposes both `import pvi` and the `pvi` console command from one source file.
+# The CLI is a single module, mecha_nudge.py, living next to the skill it powers
+# (skills/mecha-nudge/). package-dir maps that folder to the import root so `pip
+# install` exposes both `import mecha_nudge` and the `mecha-nudge` console command.
 [tool.setuptools]
-py-modules = ["pvi"]
-package-dir = { "" = "skills/pvi" }
+py-modules = ["mecha_nudge"]
+package-dir = { "" = "skills/mecha-nudge" }

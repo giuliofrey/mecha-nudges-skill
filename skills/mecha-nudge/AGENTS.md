@@ -1,4 +1,4 @@
-# pvi - thorough guide for agents
+# mecha-nudge - thorough guide for agents
 
 You (an AI agent, usually Claude) are driving this CLI on behalf of a user who
 may not code. Your job: turn their goal into a task, run the right command,
@@ -27,7 +27,7 @@ constrained via `logit_bias` (the paper's masking trick), so the distribution is
 smooth and fine-grained - exactly what `optimize` needs to detect small gains.
 Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
 
-- Set the scorer with `--model <name>` or `$PVI_MODEL` (no default). It **must**
+- Set the scorer with `--model <name>` or `$MECHA_NUDGE_MODEL` (no default). It **must**
   support `logprobs` + `logit_bias` on the Chat Completions API.
 - **Absolute PVI is not comparable across models.** Compare only within one
   `--model`. To sanity-check a finding, re-run with a different `--model` and look
@@ -35,21 +35,21 @@ Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
 
 ## Setup checks (do once)
 
-1. `pip install -r requirements.txt` for the deps (or `pip install pvi-skill` /
-   `pip install "git+<repo-url>"` to also get a `pvi` command on PATH).
-2. **How you invoke the CLI** — `pvi` below means whichever applies:
-   - pip-installed: `pvi …`
-   - Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/pvi/pvi.py" …`
-   - plain skill / clone: `python pvi.py …` from the skill folder.
+1. `pip install -r requirements.txt` for the deps (or `pip install mecha-nudge` /
+   `pip install "git+<repo-url>"` to also get a `mecha-nudge` command on PATH).
+2. **How you invoke the CLI** — `mecha-nudge` below means whichever applies:
+   - pip-installed: `mecha-nudge …`
+   - Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/mecha-nudge/mecha_nudge.py" …`
+   - plain skill / clone: `python mecha_nudge.py …` from the skill folder.
 3. Supply an OpenAI key (precedence: `--api-key` > `OPENAI_API_KEY` env var >
-   `./.env` > `~/.config/pvi/.env`). If none is set, either ask the user to run
+   `./.env` > `~/.config/mecha-nudge/.env`). If none is set, either ask the user to run
    `! export OPENAI_API_KEY=...`, drop `OPENAI_API_KEY=sk-...` into
-   `~/.config/pvi/.env` (gitignored; safest - no shell history), or pass
+   `~/.config/mecha-nudge/.env` (gitignored; safest - no shell history), or pass
    `--api-key sk-...` per command (warn it shows up in shell history / `ps`).
-4. Set a scorer model with `--model <name>` or `PVI_MODEL` — there is **no
+4. Set a scorer model with `--model <name>` or `MECHA_NUDGE_MODEL` — there is **no
    default**, and it must support logprobs + logit_bias. The user tells you which.
 5. Commands run from any directory — the baseline cache lives in
-   `~/.config/pvi/cache/` (override the location with `PVI_HOME`).
+   `~/.config/mecha-nudge/cache/` (override the location with `MECHA_NUDGE_HOME`).
 
 ## Step 1 - always define the task first
 
@@ -57,8 +57,8 @@ A task is the decision the agent makes. Either write the JSON yourself from the
 user's description, or run the wizard:
 
 ```
-pvi init                      # interactive; writes task.json
-pvi --task task.json init     # write to a specific path
+mecha-nudge init                      # interactive; writes task.json
+mecha-nudge --task task.json init     # write to a specific path
 ```
 
 Task fields:
@@ -156,7 +156,7 @@ If it doesn't improve:
 User: "Does my Etsy mug listing actually help an AI shopping agent pick it?"
 
 1. Draft task (BUY/SKIP, target BUY) -> confirm with user, write `task.json`.
-2. `pvi --task task.json --format json score --text "<their listing>"`.
+2. `mecha-nudge --task task.json --format json score --text "<their listing>"`.
 3. Read JSON: pvi +0.68 -> "Yes - it adds ~0.68 bits toward BUY; the agent's
    confidence rises from 50% to 80%."
 4. Offer: `attribute` to show which words do the work, then `optimize` to push it

@@ -10,27 +10,27 @@ If the user did not say *how* they want to use it, ask once: **in code/terminal*
 ## 0. Clone once
 
 ```bash
-git clone <REPO_URL> /tmp/pvi-skill && cd /tmp/pvi-skill
+git clone <REPO_URL> /tmp/mecha-nudge && cd /tmp/mecha-nudge
 ```
 
-## A. Use it from code / the terminal — installs the `pvi` command
+## A. Use it from code / the terminal — installs the `mecha-nudge` command
 
 ```bash
-pip install /tmp/pvi-skill          # or, without cloning: pip install "git+<REPO_URL>"
-pvi --help                          # verify the command exists
+pip install /tmp/mecha-nudge          # or, without cloning: pip install "git+<REPO_URL>"
+mecha-nudge --help                          # verify the command exists
 ```
 
 ## B. Use it inside Claude as a SKILL — no plugin, just drop the folder in
 
-The skill folder is self-contained (`SKILL.md`, `AGENTS.md`, `pvi.py`, examples).
+The skill folder is self-contained (`SKILL.md`, `AGENTS.md`, `mecha_nudge.py`, examples).
 
 ```bash
 mkdir -p ~/.claude/skills
-cp -R /tmp/pvi-skill/skills/pvi ~/.claude/skills/pvi
+cp -R /tmp/mecha-nudge/skills/mecha-nudge ~/.claude/skills/mecha-nudge
 ```
 
-Claude auto-discovers `~/.claude/skills/pvi/SKILL.md` on its next run. For a single
-project instead of globally, copy into `<project>/.claude/skills/pvi`.
+Claude auto-discovers `~/.claude/skills/mecha-nudge/SKILL.md` on its next run. For a single
+project instead of globally, copy into `<project>/.claude/skills/mecha-nudge`.
 
 ## C. Use it inside Claude as a PLUGIN — versioned + `/plugin update`
 
@@ -38,26 +38,26 @@ You cannot run slash commands for the user; tell them to run these two in Claude
 
 ```
 /plugin marketplace add <USER>/<REPO>
-/plugin install pvi@pvi-skill
+/plugin install mecha-nudge@mecha-nudges
 ```
 
 ## 1. Give it an OpenAI key (needed for every path)
 
 Pick one; the tool checks them in order `--api-key` > `OPENAI_API_KEY` env var >
-`./.env` > `~/.config/pvi/.env`. The config-dir `.env` is the persistent choice:
+`./.env` > `~/.config/mecha-nudge/.env`. The config-dir `.env` is the persistent choice:
 
 ```bash
-mkdir -p ~/.config/pvi
-printf 'OPENAI_API_KEY=%s\n' "$KEY" > ~/.config/pvi/.env   # $KEY = the user's sk-... key
+mkdir -p ~/.config/mecha-nudge
+printf 'OPENAI_API_KEY=%s\n' "$KEY" > ~/.config/mecha-nudge/.env   # $KEY = the user's sk-... key
 ```
 
 ## 2. Smoke test
 
 ```bash
-pvi init                            # interactive task builder; writes task.json
-#   (no pip install? use:  python /tmp/pvi-skill/skills/pvi/pvi.py init )
-pvi --task task.json score --text "some text to score"
+mecha-nudge init                            # interactive task builder; writes task.json
+#   (no pip install? use:  python /tmp/mecha-nudge/skills/mecha-nudge/mecha_nudge.py init )
+mecha-nudge --task task.json score --text "some text to score"
 ```
 
-The baseline cache lives in `~/.config/pvi/cache/` and is shared across every
+The baseline cache lives in `~/.config/mecha-nudge/cache/` and is shared across every
 install path, so you never recompute it per project.
