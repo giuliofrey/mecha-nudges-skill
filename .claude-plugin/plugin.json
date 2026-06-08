@@ -1,0 +1,7 @@
+{
+  "name": "pvi",
+  "description": "Measure and optimize how much a piece of text informs an AI agent's decision, using pointwise V-information (PVI). Score text, attribute which words drive the decision, and rewrite to raise PVI toward a target ('mecha-nudge').",
+  "version": "0.1.0",
+  "author": { "name": "Giulio Frey" },
+  "homepage": "https://giuliofrey.eu/mecha-nudges/"
+}

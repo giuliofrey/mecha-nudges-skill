@@ -21,28 +21,39 @@ more decisive. We approximate the paper's fine-tuned classifier with a general
 model prompted zero-shot, so no training is needed and every score is a single
 model call (the empty-input baseline is computed once and cached).
 
-## Backends
+## Scorer
 
-- `--backend openai` (default): true label logprobs. Most faithful; **prefer for
-  `optimize`**. Needs `OPENAI_API_KEY` + `pip install -r requirements.txt`.
-- `--backend claude`: runs `claude -p` and asks for a probability per label
-  (verbalized). No API key, no python deps - but probabilities are coarse, so
-  it's noisier (fine for `score`, weak for `optimize`).
-
-If the user has no OpenAI key, use `--backend claude`. Absolute PVI is **not**
-comparable across backends/models - compare only within one.
+P(label) comes from the **OpenAI API**: true label logprobs with the labels
+constrained via `logit_bias` (the paper's masking trick) - smooth and faithful.
+Pick the model with `--model` (default `gpt-4o-mini`; it must support `logprobs`
++ `logit_bias`, e.g. `gpt-4o-mini`, `gpt-4o`). Absolute PVI is **not** comparable
+across models - compare only within one `--model`.
 
 ## Setup
 
-`OPENAI_API_KEY` for the openai backend (else `! export OPENAI_API_KEY=...`), or a
-working `claude` CLI for the claude backend. Run commands from this directory.
+Install deps with `pip install -r requirements.txt` (from this skill dir), or
+`pip install pvi-skill` / `pip install "git+<repo-url>"` to also get a `pvi`
+command on PATH.
+
+**Invoking the CLI** (commands run from anywhere — the cache is global):
+- pip-installed: `pvi …`
+- as a Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/pvi/pvi.py" …`
+- plain skill / clone: `python pvi.py` from this folder.
+
+**OpenAI key** — supply one of (precedence:
+`--api-key` > `OPENAI_API_KEY` env var > `./.env` > `~/.config/pvi/.env`):
+- `! export OPENAI_API_KEY=sk-...`
+- `OPENAI_API_KEY=sk-...` in `~/.config/pvi/.env` (persistent; gitignored) or a
+  local `./.env` (`cp .env.example ~/.config/pvi/.env`)
+- `--api-key sk-...` on the command (warn: lands in shell history / `ps`)
 
 ## Workflow
 
 ### 1. Define the task (always first)
-If the user has no task file, run the wizard or write the JSON yourself:
+If the user has no task file, run the wizard or write the JSON yourself
+(`pvi` below = whichever invocation from Setup applies):
 ```
-python pvi.py init          # asks: name, question, options, target -> writes task.json
+pvi init          # asks: name, question, options, target -> writes task.json
 ```
 Fields: `name`, `question` (the decision phrased to the agent), `labels` (short,
 single words, **distinct first letters**), `target_label` (the choice to optimize
@@ -52,12 +63,12 @@ toward; required for `optimize`).
 
 | User wants | Command |
 |---|---|
-| Score one text | `python pvi.py --task task.json score --text "..."` |
-| Score a dataset (V-info) | `python pvi.py --task task.json score --data data.jsonl --text-field text` |
-| See which words matter | `python pvi.py --task task.json attribute --text "..."` |
-| Improve the text | `python pvi.py --task task.json --backend openai optimize --text "..."` |
+| Score one text | `pvi --task task.json score --text "..."` |
+| Score a dataset (V-info) | `pvi --task task.json score --data data.jsonl --text-field text` |
+| See which words matter | `pvi --task task.json attribute --text "..."` |
+| Improve the text | `pvi --task task.json optimize --text "..."` |
 
-Flags: `--backend`, `--model`, `--gen-model` (optimize rewriter), `--rounds`,
+Flags: `--model`, `--gen-model` (optimize rewriter), `--rounds`,
 `--candidates`, `--format {auto,json,human}`, `--no-cache`.
 
 ### 3. Read the output
@@ -72,5 +83,5 @@ original->best for `optimize`. Output schemas are in `AGENTS.md`.
 2. **Check faithfulness.** `optimize` can drift; review rewrites.
 
 ## Notes
-- Baseline cached in `.pvi_cache/` per task+backend+model; `--no-cache` recomputes.
-- No task yet? `python pvi.py init`, or adapt `examples/task.json`.
+- Baseline cached in `~/.config/pvi/cache/` per task+model; `--no-cache` recomputes.
+- No task yet? `pvi init`, or adapt `examples/task.json`.

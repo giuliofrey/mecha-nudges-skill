@@ -17,11 +17,8 @@ as a competent classifier for an arbitrary task when prompted. We treat that
 model as the "V" family. This gives a *pseudo-PVI*: not identical to the paper's
 numbers, but a portable, training-free proxy that works on any task.
 
-Two backends, both single-shot, both API-like:
-  * openai  - reads true label logprobs (logit_bias-constrained). Most faithful.
-  * claude  - shells out to `claude -p` and asks the model to report a
-              probability per label (verbalized probability). No logprobs, so a
-              coarser proxy, but needs no API key beyond a working Claude Code.
+Scoring uses the OpenAI API: it reads true label logprobs with the labels
+constrained via `logit_bias` (the paper's masking trick), single-shot per text.
 
 The empty-input baseline H(Y|empty) depends only on the task, so it is computed
 ONCE per task+model and cached (the same trick the paper uses to hardcode its
@@ -29,13 +26,11 @@ baseline). Every text after that is a single model call: P(y | text).
 
 Caveats (surfaced to users by the skill):
   * Scores reflect ONE proxy model. High pseudo-PVI need not transfer to other
-    agents (Goodhart's law). Absolute values are not comparable across backends.
+    agents (Goodhart's law). Absolute values are not comparable across models.
   * Optimized text must be checked for faithfulness; the loop is instructed to
     preserve meaning but does not guarantee it.
 
-Requires:
-  * openai backend: OPENAI_API_KEY, `pip install openai tiktoken`
-  * claude backend: a working `claude` CLI (Claude Code), no python deps
+Requires: OPENAI_API_KEY, `pip install openai tiktoken`
 """
 
 from __future__ import annotations
@@ -45,7 +40,6 @@ import json
 import math
 import os
 import re
-import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -87,20 +81,6 @@ def build_messages(task: dict, input_text: str) -> list[dict]:
     ]
 
 
-def verbalized_prompt(task: dict, input_text: str) -> str:
-    """Prompt for the claude backend: ask for a probability per label."""
-    labels = task["labels"]
-    example = "{" + ", ".join(f'"{l}": <p>' for l in labels) + "}"
-    return (
-        f"You are a careful decision-maker performing this task:\n{task['question']}\n\n"
-        f"The only allowed options are: {', '.join(labels)}.\n"
-        "For the input below, estimate the probability you would assign to each "
-        "option. Probabilities are between 0 and 1 and must sum to 1.\n"
-        f'Respond with ONLY a JSON object of the form {{"probabilities": {example}}}.\n\n'
-        f"Input:\n{input_text if input_text.strip() else '(no input provided)'}"
-    )
-
-
 def _bits(p: float) -> float:
     return -math.log2(max(p, FLOOR))
 
@@ -112,7 +92,7 @@ def _normalize(probs: dict, labels: list[str]) -> dict:
 
 
 # ===========================================================================
-# Backends
+# Scorer (OpenAI)
 # ===========================================================================
 class OpenAIBackend:
     """Exact pseudo-PVI: reads label logprobs with the labels constrained."""
@@ -137,38 +117,48 @@ class OpenAIBackend:
         return resp.choices[0].message.content or ""
 
 
-class ClaudeBackend:
-    """Verbalized-probability pseudo-PVI via `claude -p`. No logprobs."""
-
-    kind = "claude"
-
-    def __init__(self, model: str):
-        self.model = model
-
-    def distribution(self, task: dict, input_text: str) -> dict:
-        out = _run_claude(verbalized_prompt(task, input_text), self.model)
-        return _parse_verbalized(out, task["labels"])
-
-    def generate(self, prompt: str, model: str | None, temperature: float = 0.8) -> str:
-        return _run_claude(prompt, model or self.model)
+def pvi_home() -> Path:
+    """Directory holding the baseline cache and the global .env.
+    Override with PVI_HOME; else $XDG_CONFIG_HOME/pvi (default ~/.config/pvi)."""
+    override = os.environ.get("PVI_HOME")
+    if override:
+        return Path(override).expanduser()
+    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(base).expanduser() / "pvi"
 
 
-def make_backend(name: str, model: str | None) -> "OpenAIBackend | ClaudeBackend":
-    if name == "openai":
-        return OpenAIBackend(model or "gpt-4o-mini")
-    if name == "claude":
-        return ClaudeBackend(model or "sonnet")
-    sys.exit(f"[pvi] Unknown backend '{name}'. Use 'openai' or 'claude'.")
+def cache_dir() -> Path:
+    return pvi_home() / "cache"
 
 
-# --- openai helpers --------------------------------------------------------
+def _load_dotenv_file(p: Path) -> None:
+    if not p.exists():
+        return
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key, val = key.strip(), val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+def _load_dotenv() -> None:
+    """Fill os.environ from .env files (KEY=value lines) without overriding the
+    real environment. A local ./.env wins over the global ~/.config/pvi/.env."""
+    _load_dotenv_file(Path(".env"))
+    _load_dotenv_file(pvi_home() / ".env")
+
+
 def _openai_client():
     if not os.environ.get("OPENAI_API_KEY"):
-        sys.exit("[pvi] Set OPENAI_API_KEY, or use --backend claude.")
+        sys.exit("[pvi] No OpenAI key found. Pass --api-key sk-..., set OPENAI_API_KEY, "
+                 "or put OPENAI_API_KEY=sk-... in a .env file (./.env or ~/.config/pvi/.env).")
     try:
         from openai import OpenAI
     except ImportError:
-        sys.exit("[pvi] Install deps: pip install openai tiktoken (or use --backend claude).")
+        sys.exit("[pvi] Install deps: pip install openai tiktoken")
     return OpenAI()
 
 
@@ -233,35 +223,6 @@ def _label_logprobs(client, model: str, messages: list[dict], labels: list[str],
     return _normalize({lab: math.exp(lp) for lab, lp in logprob_by_label.items()}, labels)
 
 
-# --- claude helpers --------------------------------------------------------
-def _run_claude(prompt: str, model: str | None) -> str:
-    cmd = ["claude", "-p", prompt]
-    if model:
-        cmd += ["--model", model]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-    except FileNotFoundError:
-        sys.exit("[pvi] 'claude' CLI not found. Install Claude Code or use --backend openai.")
-    except subprocess.TimeoutExpired:
-        sys.exit("[pvi] claude -p timed out.")
-    if r.returncode != 0:
-        sys.exit(f"[pvi] claude -p failed: {(r.stderr or '').strip()[:300]}")
-    return (r.stdout or "").strip()
-
-
-def _parse_verbalized(text: str, labels: list[str]) -> dict:
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        sys.exit(f"[pvi] Could not read probabilities from claude output:\n{text[:300]}")
-    try:
-        obj = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        sys.exit(f"[pvi] claude returned non-JSON probabilities:\n{text[:300]}")
-    probs = obj.get("probabilities", obj)
-    lower = {str(k).strip().lower(): v for k, v in probs.items()}
-    return _normalize({lab: float(lower.get(lab.lower(), FLOOR)) for lab in labels}, labels)
-
-
 # ===========================================================================
 # Baseline H(Y | empty) - computed once per task+model, cached
 # ===========================================================================
@@ -271,7 +232,7 @@ def _slug(s: str) -> str:
 
 def baseline_path(task: dict, backend) -> Path:
     name = _slug(task.get("name", "task"))
-    return Path(f".pvi_cache/{name}__{backend.kind}_{_slug(backend.model)}__baseline.json")
+    return cache_dir() / f"{name}__{backend.kind}_{_slug(backend.model)}__baseline.json"
 
 
 def compute_baseline(backend, task: dict, use_cache: bool = True) -> dict:
@@ -408,7 +369,7 @@ def _interpret(pvi: float, label: str) -> str:
 
 def format_human(cmd: str, out: dict) -> str:
     if cmd == "baseline":
-        lines = [f"Baseline (no input) for task '{out['task']}' via {out['backend']}:"]
+        lines = [f"Baseline (no input) for task '{out['task']}' via {out['model']}:"]
         for lab, h in out["H_yb_per_label"].items():
             lines.append(f"  H(Y|empty) for '{lab}' = {h:+.3f} bits   (prior p={out['baseline_distribution'][lab]:.3f})")
         return "\n".join(lines)
@@ -453,7 +414,7 @@ def format_human(cmd: str, out: dict) -> str:
 # ===========================================================================
 # Interactive task builder (so non-coders never touch JSON)
 # ===========================================================================
-def run_init(dest: str):
+def run_init(dest: str, prog: str = "pvi"):
     print("Let's define the decision your AI agent makes.\n")
     name = input("Short name for this task (e.g. buy-or-skip): ").strip() or "task"
     question = input("The decision, phrased to the agent\n  (e.g. 'You are a shopping agent. Based only on this text, BUY or SKIP?'):\n  ").strip()
@@ -468,7 +429,7 @@ def run_init(dest: str):
     out = dest or "task.json"
     Path(out).write_text(json.dumps(task, indent=2) + "\n")
     print(f"\nWrote {out}:\n{json.dumps(task, indent=2)}")
-    print(f"\nNext: python pvi.py --task {out} score --text \"your text here\"")
+    print(f"\nNext: {prog} --task {out} score --text \"your text here\"")
 
 
 # ===========================================================================
@@ -486,11 +447,12 @@ def _read_records(path: str, field: str) -> list[str]:
 def main():
     ap = argparse.ArgumentParser(
         description="Measure and optimize text for an AI agent's decision (pseudo-PVI).",
-        epilog="Run 'python pvi.py init' first if you don't have a task file yet.",
+        epilog="Run the 'init' command first if you don't have a task file yet.",
     )
-    ap.add_argument("--backend", choices=["openai", "claude"], default="openai",
-                    help="Scorer backend. openai=exact logprobs; claude=verbalized via 'claude -p'.")
-    ap.add_argument("--model", help="Scorer model (openai default gpt-4o-mini, claude default sonnet).")
+    ap.add_argument("--model", default="gpt-4o-mini",
+                    help="OpenAI scorer model (needs logprobs + logit_bias; default gpt-4o-mini).")
+    ap.add_argument("--api-key", help="OpenAI API key. Overrides OPENAI_API_KEY and .env. "
+                    "Note: visible in shell history and `ps`; a .env file is safer.")
     ap.add_argument("--task", help="Task JSON file path or inline JSON. (Created by 'init'.)")
     ap.add_argument("--format", choices=["auto", "json", "human"], default="auto",
                     help="auto = human in a terminal, json when piped/used by an agent.")
@@ -520,20 +482,25 @@ def main():
 
     args = ap.parse_args()
 
-    # init needs no backend/baseline and may create the task file.
+    # Resolve the API key: real env wins over .env; --api-key overrides both.
+    _load_dotenv()
+    if args.api_key:
+        os.environ["OPENAI_API_KEY"] = args.api_key
+
+    # init needs no scorer/baseline and may create the task file.
     if args.cmd == "init":
-        run_init(args.task)
+        run_init(args.task, ap.prog)
         return
 
     if not args.task:
         sys.exit("[pvi] --task is required. Run 'python pvi.py init' to create one.")
 
     task = load_task(args.task)
-    backend = make_backend(args.backend, args.model)
+    backend = OpenAIBackend(args.model)
     baseline = compute_baseline(backend, task, use_cache=not args.no_cache)
 
     if args.cmd == "baseline":
-        out = {"task": task.get("name", "task"), "backend": f"{backend.kind}:{backend.model}",
+        out = {"task": task.get("name", "task"), "model": backend.model,
                "H_yb_per_label": {k: round(_bits(v), 4) for k, v in baseline.items()},
                "baseline_distribution": {k: round(v, 4) for k, v in baseline.items()}}
     elif args.cmd == "score":

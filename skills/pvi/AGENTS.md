@@ -20,28 +20,34 @@ The paper uses two fine-tuned classifiers. This tool substitutes a general
 prompted model, so the numbers are a **pseudo-PVI proxy**, not the paper's exact
 values. Say so when it matters.
 
-## Backends (choose deliberately)
+## Scorer
 
-| Backend | How P(label) is obtained | Quality | Needs |
-|---|---|---|---|
-| `openai` (default) | True token logprobs, labels constrained via `logit_bias` (the paper's masking trick). Smooth, fine-grained. | Best, especially for `optimize`. | `OPENAI_API_KEY`, `pip install openai tiktoken` |
-| `claude` | `claude -p` asked to report a probability per label (verbalized). Probabilities are **coarse/quantized** (often multiples of 0.1). | Good for `score`/`attribute`; noisy for `optimize`. | A working `claude` CLI, no python deps |
+P(label) comes from the **OpenAI API**: true token logprobs with the labels
+constrained via `logit_bias` (the paper's masking trick), so the distribution is
+smooth and fine-grained - exactly what `optimize` needs to detect small gains.
+Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
 
-Guidance:
-- Default to `openai` when a key is available, **especially for `optimize`** (the
-  quantized claude signal makes small gains undetectable).
-- Use `claude` when there's no OpenAI key, or the user wants to score "for a
-  Claude agent specifically."
-- **Absolute PVI is not comparable across backends or models.** Compare only
-  within one `--backend`/`--model`. To sanity-check a finding, re-run with a
-  different `--model` and look at the *direction/ranking*, not the bits.
+- Pick the model with `--model` (default `gpt-4o-mini`). It **must** support
+  `logprobs` + `logit_bias` (`gpt-4o-mini`, `gpt-4o`).
+- **Absolute PVI is not comparable across models.** Compare only within one
+  `--model`. To sanity-check a finding, re-run with a different `--model` and look
+  at the *direction/ranking*, not the bits.
 
 ## Setup checks (do once)
 
-1. Backend deps per the table above. If `OPENAI_API_KEY` is missing and the user
-   wants `openai`, ask them to run `! export OPENAI_API_KEY=...`, or switch to
-   `--backend claude`.
-2. Run commands from the skill directory (the baseline cache lives in `.pvi_cache/`).
+1. `pip install -r requirements.txt` for the deps (or `pip install pvi-skill` /
+   `pip install "git+<repo-url>"` to also get a `pvi` command on PATH).
+2. **How you invoke the CLI** — `pvi` below means whichever applies:
+   - pip-installed: `pvi …`
+   - Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/pvi/pvi.py" …`
+   - plain skill / clone: `python pvi.py …` from the skill folder.
+3. Supply an OpenAI key (precedence: `--api-key` > `OPENAI_API_KEY` env var >
+   `./.env` > `~/.config/pvi/.env`). If none is set, either ask the user to run
+   `! export OPENAI_API_KEY=...`, drop `OPENAI_API_KEY=sk-...` into
+   `~/.config/pvi/.env` (gitignored; safest - no shell history), or pass
+   `--api-key sk-...` per command (warn it shows up in shell history / `ps`).
+4. Commands run from any directory — the baseline cache lives in
+   `~/.config/pvi/cache/` (override the location with `PVI_HOME`).
 
 ## Step 1 - always define the task first
 
@@ -49,8 +55,8 @@ A task is the decision the agent makes. Either write the JSON yourself from the
 user's description, or run the wizard:
 
 ```
-python pvi.py init                      # interactive; writes task.json
-python pvi.py --task task.json init     # write to a specific path
+pvi init                      # interactive; writes task.json
+pvi --task task.json init     # write to a specific path
 ```
 
 Task fields:
@@ -59,7 +65,7 @@ Task fields:
 - `labels` (list): the choices. **Rules that matter:** short, single words,
   and with *distinct first tokens*. Good: `BUY`/`SKIP`, `YES`/`NO`,
   `RELEVANT`/`IRRELEVANT`. Bad: `RELEVANT`/`REJECT` (both start with `RE` -> the
-  openai backend prints a collision warning and scores between them are unreliable).
+  scorer prints a collision warning and scores between them are unreliable).
 - `target_label` (string, optional): the choice to measure/optimize toward.
   Required for `optimize`. For `score`, omitting it means "score toward whatever
   the model itself picks" (descriptive); setting it means "how much does the text
@@ -75,8 +81,8 @@ Task fields:
 | Make the text more persuasive to the agent | `optimize --text "..." [--rounds N --candidates K --gen-model M]` |
 | Just see the prior baseline | `baseline` |
 
-Global flags (put them **before** the subcommand): `--backend`, `--model`,
-`--task`, `--format {auto,json,human}`, `--no-cache`.
+Global flags (put them **before** the subcommand): `--model`, `--task`,
+`--format {auto,json,human}`, `--no-cache`.
 
 `--format auto` (default) prints human text in a terminal and JSON when piped or
 captured by an agent. **When you run it, you get JSON** - parse that. If you want
@@ -111,9 +117,7 @@ rewrites primed with the helping/diluting words -> score each -> keep the best -
 stop when a round yields no improvement.
 
 If it doesn't improve:
-- Coarse backend: switch to `--backend openai` (quantized claude probs hide small
-  gains).
-- Weak rewriter: raise `--gen-model` (e.g. `gpt-4o`, or `sonnet`/`opus` for claude).
+- Weak rewriter: raise `--gen-model` (e.g. `gpt-4o`).
 - Too few tries: raise `--candidates` (8-12) and `--rounds` (4-5).
 - Genuinely saturated: the text may already be near the agent's ceiling - say so.
 
@@ -125,16 +129,16 @@ If it doesn't improve:
    but can drift; the user must review rewrites.
 3. **Pseudo, not exact.** This is a zero-shot proxy for the paper's fine-tuned
    V-information.
-4. **claude backend is coarse.** Verbalized probabilities are low-resolution.
 
 ## Errors you may hit
 
-- `Set OPENAI_API_KEY, or use --backend claude` - missing key.
-- `'claude' CLI not found` - claude backend without Claude Code installed.
+- `No OpenAI key found. Pass --api-key sk-..., set OPENAI_API_KEY, or put ... in a
+  .env file` - no key supplied by any of the three methods.
+- `Install deps: pip install openai tiktoken` - the SDK isn't installed.
 - `Warning: labels 'X' and 'Y' start with the same token` (stderr) - fix the task
   labels to have distinct first words; results between them are unreliable.
-- `Could not read probabilities from claude output` - the model didn't return
-  JSON; retry, or use a more capable `--model`.
+- A model without `logprobs`/`logit_bias` support will error from the OpenAI API;
+  switch `--model` to `gpt-4o-mini` or `gpt-4o`.
 
 ## Cost & latency
 
@@ -150,9 +154,8 @@ If it doesn't improve:
 User: "Does my Etsy mug listing actually help an AI shopping agent pick it?"
 
 1. Draft task (BUY/SKIP, target BUY) -> confirm with user, write `task.json`.
-2. `python pvi.py --task task.json --format json score --text "<their listing>"`.
+2. `pvi --task task.json --format json score --text "<their listing>"`.
 3. Read JSON: pvi +0.68 -> "Yes - it adds ~0.68 bits toward BUY; the agent's
    confidence rises from 50% to 80%."
-4. Offer: `attribute` to show which words do the work, then `optimize` (suggest
-   `--backend openai` for the rewrite) to push it higher - with the faithfulness
-   and proxy caveats.
+4. Offer: `attribute` to show which words do the work, then `optimize` to push it
+   higher - with the faithfulness and proxy caveats.

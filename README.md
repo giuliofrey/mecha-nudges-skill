@@ -1,4 +1,4 @@
-# pvi - measure & optimize text for AI agents
+# pvi — measure & optimize text for AI agents
 
 A tiny tool to score and improve how much a piece of text informs an AI agent's
 decision, using **Pointwise V-Information (PVI)**. Companion to
@@ -6,9 +6,9 @@ decision, using **Pointwise V-Information (PVI)**. Companion to
 Ethayarajh, 2026).
 
 Use it three ways:
-- **Yourself, from the terminal** - readable output, an interactive task wizard.
-- **Through an AI agent** (Claude) - `SKILL.md` makes Claude drive it for you.
-- **From other tools** - everything also prints JSON.
+- **Yourself, from the terminal** — readable output, an interactive task wizard.
+- **Through an AI agent** (Claude) — installs as a skill/plugin so Claude drives it.
+- **From other tools** — everything also prints JSON.
 
 ## What is PVI here?
 
@@ -29,34 +29,84 @@ a good enough stand-in for that classifier on an arbitrary task.** That gives a
 training-free *pseudo-PVI* that runs entirely through an API / CLI.
 
 **Single-shot.** `H(Y|empty)` depends only on the task, so it is computed once and
-cached. After that, scoring any text is one model call.
+cached (in `~/.config/pvi/cache/`). After that, scoring any text is one model call.
 
-## Backends
+## Scorer
 
-| Backend | How it gets P(label) | Notes |
-|---|---|---|
-| `openai` (default) | True token logprobs, labels constrained via `logit_bias`. | Most faithful, smooth signal. Best for `optimize`. Needs `OPENAI_API_KEY`. |
-| `claude` | `claude -p` reports a probability per label (verbalized). | No API key, no python deps. Probabilities are coarse, so noisier - fine for `score`, weak for `optimize`. |
+P(label) comes from the **OpenAI API**: true token logprobs with the labels
+constrained via `logit_bias` (the paper's masking trick), giving a smooth,
+faithful signal. Choose the model with `--model` (default `gpt-4o-mini`); it must
+support `logprobs` + `logit_bias` (`gpt-4o-mini`, `gpt-4o`).
 
-Absolute PVI is **not** comparable across backends or models - compare within one.
+Absolute PVI is **not** comparable across models — compare within one `--model`.
+
+## Repository layout
+
+```
+pyproject.toml            # pip-installable: gives you the `pvi` command
+.claude-plugin/           # marketplace.json + plugin.json (Claude Code plugin)
+skills/pvi/               # the self-contained skill
+  ├── SKILL.md            #   Claude Code skill manifest
+  ├── AGENTS.md           #   full agent-facing reference
+  ├── pvi.py              #   the CLI / importable module
+  ├── requirements.txt
+  └── examples/
+INSTALL.md                # paste-the-link agent recipe
+```
 
 ## Install
 
+Pick the path that matches how you'll use it (or see [`INSTALL.md`](INSTALL.md),
+which an AI agent can follow from just the repo link).
+
+### A — In code / the terminal (the `pvi` command)
+
 ```bash
-# openai backend
-pip install -r requirements.txt
+pip install "git+https://github.com/<USER>/<REPO>"   # or: pip install . from a clone
+pvi --help
+```
+
+### B — In Claude Code as a plugin (versioned, `/plugin update`)
+
+```
+/plugin marketplace add <USER>/<REPO>
+/plugin install pvi@pvi-skill
+```
+
+### C — In Claude Code as a plain skill (no plugin)
+
+```bash
+git clone https://github.com/<USER>/<REPO> /tmp/pvi-skill
+cp -R /tmp/pvi-skill/skills/pvi ~/.claude/skills/pvi   # auto-discovered
+```
+
+> The examples below use the `pvi` command (path A). Without a pip install, run the
+> equivalent `python skills/pvi/pvi.py …` from a clone.
+
+## Configure the OpenAI key
+
+Provide your key in **any** of these ways — checked in this order:
+`--api-key` > `OPENAI_API_KEY` env var > `./.env` > `~/.config/pvi/.env`.
+
+```bash
+# 1. environment variable
 export OPENAI_API_KEY=sk-...
 
-# claude backend: just needs a working `claude` CLI (Claude Code). No pip needed.
+# 2. persistent .env (gitignored, never hits shell history) — recommended
+mkdir -p ~/.config/pvi && cp .env.example ~/.config/pvi/.env   # then paste your key
+#   (a ./.env in your working dir also works and takes precedence)
+
+# 3. per-command flag (visible in shell history / `ps` — least safe)
+pvi --api-key sk-... --task task.json score --text "..."
 ```
 
 ## Define a task (no JSON editing required)
 
 ```bash
-python pvi.py init          # asks for the decision, options, and target; writes task.json
+pvi init          # asks for the decision, options, and target; writes task.json
 ```
 
-Or write it by hand (`examples/task.json`):
+Or write it by hand (see `skills/pvi/examples/task.json`):
 
 ```json
 {
@@ -77,31 +127,31 @@ piped or used by an agent you get JSON (override with `--format`).
 
 ```bash
 # Score one text
-python pvi.py --task task.json score --text "Handmade ceramic mug, 12oz, lead-free glaze, dishwasher safe."
+pvi --task task.json score --text "Handmade ceramic mug, 12oz, lead-free glaze, dishwasher safe."
 
 # Score a dataset -> mean PVI (pseudo V-information)
-python pvi.py --task task.json score --data examples/data.jsonl --text-field text
+pvi --task task.json score --data skills/pvi/examples/data.jsonl --text-field text
 
 # Which words carry the information?
-python pvi.py --task task.json attribute --text "..."
+pvi --task task.json attribute --text "..."
 
-# Rewrite to raise PVI toward target_label (use the openai backend for best results)
-python pvi.py --task task.json --backend openai optimize --text "..." --rounds 3 --candidates 5
+# Rewrite to raise PVI toward target_label
+pvi --task task.json optimize --text "..." --rounds 3 --candidates 5
 
-# No OpenAI key? Run the whole thing through Claude:
-python pvi.py --backend claude --model sonnet --task task.json score --text "..."
+# Score with a stronger model
+pvi --task task.json --model gpt-4o score --text "..."
 ```
 
-Flags: `--backend {openai,claude}`, `--model`, `--gen-model` (optimize rewriter),
-`--rounds`, `--candidates`, `--format {auto,json,human}`, `--no-cache`.
+Flags: `--model`, `--gen-model` (optimize rewriter), `--rounds`, `--candidates`,
+`--format {auto,json,human}`, `--no-cache`.
 
 ## How `optimize` works
 
 A loop: attribute which spans help/hurt -> ask `--gen-model` for N faithful
 rewrites primed with those insights -> score each with PVI -> keep the best ->
 repeat until a round stops improving. Returns before/after PVI, the gain, and the
-full trajectory. If gains stall, prefer `--backend openai`, raise `--candidates`,
-or use a stronger `--gen-model`.
+full trajectory. If gains stall, raise `--candidates`, add `--rounds`, or use a
+stronger `--gen-model`.
 
 ## Caveats (please read)
 
@@ -111,15 +161,16 @@ or use a stronger `--gen-model`.
   meaning/length, but it can drift. Review rewrites before using them.
 - **Pseudo, not exact.** A zero-shot proxy for the paper's fine-tuned
   V-information, not a reproduction of it.
-- **claude backend is coarse.** Verbalized probabilities are low-resolution.
 
 ## Model requirements
 
-The `openai` scorer needs a model with `logprobs` + `logit_bias` (`gpt-4o-mini`,
-`gpt-4o`). The `claude` scorer works with any model the `claude` CLI accepts
-(`haiku`, `sonnet`, `opus`).
+The scorer needs an OpenAI model that supports `logprobs` + `logit_bias`
+(`gpt-4o-mini`, `gpt-4o`). The optimize rewriter (`--gen-model`) can be any chat
+model; it defaults to the scorer model.
 
 ## For AI agents
 
-`AGENTS.md` is the full agent-facing reference (output schemas, decision tree,
-error handling, example session). `SKILL.md` is the Claude Code skill manifest.
+`skills/pvi/AGENTS.md` is the full agent-facing reference (output schemas, decision
+tree, error handling, example session). `skills/pvi/SKILL.md` is the Claude Code
+skill manifest. `INSTALL.md` is a recipe an agent can follow to install everything
+from just the repo link.

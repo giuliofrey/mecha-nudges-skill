@@ -2,3 +2,10 @@
 __pycache__/
 .venv/
 *.pyc
+.env
+**/.env
+
+# build artifacts (pip / setuptools)
+build/
+dist/
+*.egg-info/
