@@ -1,4 +1,4 @@
-# pvi — measure & optimize text for AI agents
+# pvi: measure & optimize text for AI agents
 
 A tiny tool to score and improve how much a piece of text informs an AI agent's
 decision, using **Pointwise V-Information (PVI)**. Companion to
@@ -6,9 +6,9 @@ decision, using **Pointwise V-Information (PVI)**. Companion to
 Ethayarajh, 2026).
 
 Use it three ways:
-- **Yourself, from the terminal** — readable output, an interactive task wizard.
-- **Through an AI agent** (Claude) — installs as a skill/plugin so Claude drives it.
-- **From other tools** — everything also prints JSON.
+- **Yourself, from the terminal**: readable output, an interactive task wizard.
+- **Through an AI agent** (Claude): installs as a skill/plugin so Claude drives it.
+- **From other tools**: everything also prints JSON.
 
 ## What is PVI here?
 
@@ -38,7 +38,7 @@ constrained via `logit_bias` (the paper's masking trick), giving a smooth,
 faithful signal. Set the model with `--model <name>` or `$PVI_MODEL` (no default);
 it must support `logprobs` + `logit_bias` on the Chat Completions API.
 
-Absolute PVI is **not** comparable across models — compare within one `--model`.
+Absolute PVI is **not** comparable across models; compare within one `--model`.
 
 ## Repository layout
 
@@ -59,21 +59,21 @@ INSTALL.md                # paste-the-link agent recipe
 Pick the path that matches how you'll use it (or see [`INSTALL.md`](INSTALL.md),
 which an AI agent can follow from just the repo link).
 
-### A — In code / the terminal (the `pvi` command)
+### A. In code / the terminal (the `pvi` command)
 
 ```bash
 pip install "git+https://github.com/<USER>/<REPO>"   # or: pip install . from a clone
 pvi --help
 ```
 
-### B — In Claude Code as a plugin (versioned, `/plugin update`)
+### B. In Claude Code as a plugin (versioned, `/plugin update`)
 
 ```
 /plugin marketplace add <USER>/<REPO>
 /plugin install pvi@pvi-skill
 ```
 
-### C — In Claude Code as a plain skill (no plugin)
+### C. In Claude Code as a plain skill (no plugin)
 
 ```bash
 git clone https://github.com/<USER>/<REPO> /tmp/pvi-skill
@@ -85,18 +85,18 @@ cp -R /tmp/pvi-skill/skills/pvi ~/.claude/skills/pvi   # auto-discovered
 
 ## Configure the OpenAI key
 
-Provide your key in **any** of these ways — checked in this order:
+Provide your key in **any** of these ways, checked in this order:
 `--api-key` > `OPENAI_API_KEY` env var > `./.env` > `~/.config/pvi/.env`.
 
 ```bash
 # 1. environment variable
 export OPENAI_API_KEY=sk-...
 
-# 2. persistent .env (gitignored, never hits shell history) — recommended
+# 2. persistent .env (gitignored, never hits shell history), recommended
 mkdir -p ~/.config/pvi && cp .env.example ~/.config/pvi/.env   # then paste your key
 #   (a ./.env in your working dir also works and takes precedence)
 
-# 3. per-command flag (visible in shell history / `ps` — least safe)
+# 3. per-command flag (visible in shell history / `ps`), least safe
 pvi --api-key sk-... --task task.json score --text "..."
 ```
 
