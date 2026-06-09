@@ -7,7 +7,7 @@ Ethayarajh, 2026).
 
 Use it three ways:
 - **Yourself, from the terminal**: readable output, an interactive task wizard.
-- **Through an AI agent** (Claude): installs as a skill/plugin so Claude drives it.
+- **Through an AI agent** (Claude): installs as a skill so Claude drives it.
 - **From other tools**: everything also prints JSON.
 
 ## What is PVI here?
@@ -38,13 +38,11 @@ constrained via `logit_bias` (the paper's masking trick), giving a smooth,
 faithful signal. Set the model with `--model <name>` or `$MECHA_NUDGE_MODEL` (no default);
 it must support `logprobs` + `logit_bias` on the Chat Completions API.
 
-Absolute PVI is **not** comparable across models; compare within one `--model`.
 
 ## Repository layout
 
 ```
 pyproject.toml            # pip-installable: gives you the `mecha-nudge` command
-.claude-plugin/           # marketplace.json + plugin.json (Claude Code plugin)
 skills/mecha-nudge/               # the self-contained skill
   ├── SKILL.md            #   Claude Code skill manifest
   ├── AGENTS.md           #   full agent-facing reference
@@ -62,21 +60,14 @@ which an AI agent can follow from just the repo link).
 ### A. In code / the terminal (the `mecha-nudge` command)
 
 ```bash
-pip install "git+https://github.com/<USER>/<REPO>"   # or: pip install . from a clone
+pip install "git+https://github.com/giuliofrey/mecha-nudges-skill"   # or: pip install . from a clone
 mecha-nudge --help
 ```
 
-### B. In Claude Code as a plugin (versioned, `/plugin update`)
-
-```
-/plugin marketplace add <USER>/<REPO>
-/plugin install mecha-nudge@mecha-nudges
-```
-
-### C. In Claude Code as a plain skill (no plugin)
+### B. In Claude Code as a skill (drop-in)
 
 ```bash
-git clone https://github.com/<USER>/<REPO> /tmp/mecha-nudge
+git clone https://github.com/giuliofrey/mecha-nudges-skill /tmp/mecha-nudge
 cp -R /tmp/mecha-nudge/skills/mecha-nudge ~/.claude/skills/mecha-nudge   # auto-discovered
 ```
 
@@ -156,7 +147,7 @@ stronger `--gen-model`.
 
 ## Caveats (please read)
 
-- **One-proxy Goodhart risk.** Scores reflect the single `--model` you choose.
+- **One-proxy risk.** Scores reflect the single `--model` you choose.
   Re-score with another `--model` to sanity-check direction.
 - **Faithfulness.** `optimize` is instructed to stay truthful and preserve
   meaning/length, but it can drift. Review rewrites before using them.

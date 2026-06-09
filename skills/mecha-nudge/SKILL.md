@@ -32,13 +32,12 @@ is **not** comparable across models - compare only within one `--model`.
 ## Setup
 
 Install deps with `pip install -r requirements.txt` (from this skill dir), or
-`pip install mecha-nudge` / `pip install "git+<repo-url>"` to also get a `mecha-nudge`
+`pip install mecha-nudge` / `pip install "git+https://github.com/giuliofrey/mecha-nudges-skill"` to also get a `mecha-nudge`
 command on PATH.
 
 **Invoking the CLI** (commands run from anywhere — the cache is global):
 - pip-installed: `mecha-nudge …`
-- as a Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/mecha-nudge/mecha_nudge.py" …`
-- plain skill / clone: `python mecha_nudge.py` from this folder.
+- skill / clone: `python mecha_nudge.py` from this folder.
 
 **OpenAI key** — supply one of (precedence:
 `--api-key` > `OPENAI_API_KEY` env var > `./.env` > `~/.config/mecha-nudge/.env`):

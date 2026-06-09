@@ -1,8 +1,7 @@
 # Install — agent recipe
 
-You are an AI agent and the user pasted this repo and asked you to "install it" /
-"set it up". Follow these steps with the Bash tool. Substitute `<REPO_URL>` with
-the GitHub URL the user gave you, and `<USER>/<REPO>` with its `owner/name`.
+You are an AI agent and the user wants this repo installed / set up. Follow these
+steps with the Bash tool.
 
 If the user did not say *how* they want to use it, ask once: **in code/terminal**,
 **inside Claude**, or **both** — then run the matching path(s). When unsure, do A+B.
@@ -10,17 +9,17 @@ If the user did not say *how* they want to use it, ask once: **in code/terminal*
 ## 0. Clone once
 
 ```bash
-git clone <REPO_URL> /tmp/mecha-nudge && cd /tmp/mecha-nudge
+git clone https://github.com/giuliofrey/mecha-nudges-skill /tmp/mecha-nudge && cd /tmp/mecha-nudge
 ```
 
 ## A. Use it from code / the terminal — installs the `mecha-nudge` command
 
 ```bash
-pip install /tmp/mecha-nudge          # or, without cloning: pip install "git+<REPO_URL>"
+pip install /tmp/mecha-nudge          # or, without cloning: pip install "git+https://github.com/giuliofrey/mecha-nudges-skill"
 mecha-nudge --help                          # verify the command exists
 ```
 
-## B. Use it inside Claude as a SKILL — no plugin, just drop the folder in
+## B. Use it inside Claude as a skill — drop the folder in
 
 The skill folder is self-contained (`SKILL.md`, `AGENTS.md`, `mecha_nudge.py`, examples).
 
@@ -31,15 +30,6 @@ cp -R /tmp/mecha-nudge/skills/mecha-nudge ~/.claude/skills/mecha-nudge
 
 Claude auto-discovers `~/.claude/skills/mecha-nudge/SKILL.md` on its next run. For a single
 project instead of globally, copy into `<project>/.claude/skills/mecha-nudge`.
-
-## C. Use it inside Claude as a PLUGIN — versioned + `/plugin update`
-
-You cannot run slash commands for the user; tell them to run these two in Claude:
-
-```
-/plugin marketplace add <USER>/<REPO>
-/plugin install mecha-nudge@mecha-nudges
-```
 
 ## 1. Give it an OpenAI key (needed for every path)
 

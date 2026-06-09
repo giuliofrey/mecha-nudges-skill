@@ -36,11 +36,10 @@ Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
 ## Setup checks (do once)
 
 1. `pip install -r requirements.txt` for the deps (or `pip install mecha-nudge` /
-   `pip install "git+<repo-url>"` to also get a `mecha-nudge` command on PATH).
+   `pip install "git+https://github.com/giuliofrey/mecha-nudges-skill"` to also get a `mecha-nudge` command on PATH).
 2. **How you invoke the CLI** — `mecha-nudge` below means whichever applies:
    - pip-installed: `mecha-nudge …`
-   - Claude plugin: `python "$CLAUDE_PLUGIN_ROOT/skills/mecha-nudge/mecha_nudge.py" …`
-   - plain skill / clone: `python mecha_nudge.py …` from the skill folder.
+   - skill / clone: `python mecha_nudge.py …` from the skill folder.
 3. Supply an OpenAI key (precedence: `--api-key` > `OPENAI_API_KEY` env var >
    `./.env` > `~/.config/mecha-nudge/.env`). If none is set, either ask the user to run
    `! export OPENAI_API_KEY=...`, drop `OPENAI_API_KEY=sk-...` into
