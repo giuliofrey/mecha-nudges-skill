@@ -7,18 +7,33 @@ the deep reference; `SKILL.md` is the short trigger.
 
 ## Mental model
 
-PVI = "how many bits does this text remove from an AI agent's uncertainty about
-a decision." Formally `PVI = H(Y|empty) - H(Y|text)`, in bits:
+PVI = "how many bits of usable information does this text carry about the agent's
+decision" - i.e. how much more *predictable* the decision becomes, relative to a
+reference prior. Formally, in bits:
 
-- `H(Y|text)` = uncertainty about the decision after reading the text.
-- `H(Y|empty)` = uncertainty with no input (the model's prior). Constant per
-  task, so computed once and cached.
-- `PVI > 0`: text informs the decision. `~0`: uninformative. `< 0`: text points
-  the agent *away* from the target decision.
+    PVI = -log2 p_baseline(y) + log2 p_text(y) = log2[ p_text(y) / p_baseline(y) ]
 
-The paper uses two fine-tuned classifiers. This tool substitutes a general
-prompted model, so the numbers are a **pseudo-PVI proxy**, not the paper's exact
-values. Say so when it matters.
+The paper computes PVI at the agent's *observed* decision y. This tool fixes
+y = `target_label`, so raising PVI = making the agent *predictably choose* that
+target. Keep both readings straight when you explain a number.
+
+- `p_text(y)` = the probability the model assigns label y after reading the text.
+- `p_baseline(y)` = the reference prior, set by `--baseline`:
+  - **`neutral` (default)** — uniform prior (`1/K` per label). PVI is *bits above
+    chance*: `0` uninformative, up to `+log2(K)` fully decides, negative points away.
+    No API call.
+  - **`empty`** — the model's empty-input response `p(y|empty)` (the paper's
+    `H(Y|empty)` analogue), computed once per task+model and cached. A zero-shot
+    model treats an empty input as "no info → decline", so this is extreme and
+    **inflates every score** — opt-in diagnostic, not the default.
+- `PVI > 0`: text makes the decision more predictable (here: favors the target).
+  `~0`: no usable information. `< 0`: the model predicts better *ignoring* the text
+  (here: the text favors the other label).
+
+The paper uses two fine-tuned classifiers (one of which, the null model, learns
+the dataset's label marginal). This tool substitutes a single general prompted
+model and never trains, so the numbers are a **pseudo-PVI proxy**, not the paper's
+exact values. Say so when it matters; compare *direction/ranking*, not absolute bits.
 
 ## Scorer
 
@@ -80,10 +95,10 @@ Task fields:
 | Average over a dataset (V-information) | `score --data file.jsonl --text-field text` |
 | Which words/sentences carry the info? | `attribute --text "..." [--granularity word\|sentence]` |
 | Make the text more persuasive to the agent | `optimize --text "..." [--rounds N --candidates K --gen-model M]` |
-| Just see the prior baseline | `baseline` |
+| Just see the reference baseline | `baseline` (add `--baseline empty` for the model's empty-input prior) |
 
-Global flags (put them **before** the subcommand): `--model`, `--task`,
-`--format {auto,json,human}`, `--no-cache`.
+Global flags (put them **before** the subcommand): `--baseline {neutral,empty}`
+(default neutral), `--model`, `--task`, `--format {auto,json,human}`, `--no-cache`.
 
 `--format auto` (default) prints human text in a terminal and JSON when piped or
 captured by an agent. **When you run it, you get JSON** - parse that. If you want
@@ -97,11 +112,16 @@ the pretty version to show the user verbatim, pass `--format human`.
  "p_target_given_text":0.8,"p_target_baseline":0.5,
  "distribution":{"BUY":0.8,"SKIP":0.2}}
 ```
-Report `pvi` in bits, the decision, and what it means. `pvi>0.5` strong, `0.05-0.5`
-mild, `~0` none, `<0` points away.
+Report `pvi` in bits, the decision, and what it means. `H_yb` is the baseline
+surprisal (`-log2 p_baseline(target)`), `H_yx` the same for the text. Under the
+**default `neutral`** baseline the scale is "bits above chance": `pvi>0.5` strong,
+`0.05-0.5` mild, `~0` none, `<0` points away (binary maxes at `+1`). These bands do
+**not** hold under `--baseline empty`, where every score is inflated — there, lead
+with `p_target_given_text` and relative ranking, not the bit magnitude.
 
 `score` (dataset): `{"n":..,"v_information":..,"mean_H_yb":..,"mean_H_yx":..,"per_record":[...]}`.
-`v_information` is the mean PVI = the paper's headline quantity.
+`v_information` is the mean PVI - a proxy for the paper's headline quantity (and
+only on the `neutral` baseline does it read as bits-above-chance).
 
 `attribute`: `{"pvi":..,"label":..,"spans":[{"span":"lead-free","delta":0.5,"pvi_without":0.18}, ...]}`.
 `delta = PVI_full - PVI_without`. Positive = the span *adds* information; negative
@@ -125,11 +145,21 @@ If it doesn't improve:
 ## Caveats to relay to the user (every substantive run)
 
 1. **One-proxy Goodhart risk.** The score reflects one model. High pseudo-PVI
-   need not transfer to other agents. Offer to re-score with another `--model`.
-2. **Check faithfulness.** `optimize` is told to stay truthful and keep meaning,
+   need not transfer to other agents. Offer to re-score with another `--model`
+   and compare *direction/ranking*, not absolute bits.
+2. **Baseline choice changes the scale.** Default `neutral` = bits above chance
+   (interpretable). `--baseline empty` is a diagnostic that inflates everything
+   (a zero-shot empty input ≠ the paper's learned label marginal). Always say
+   which baseline a number came from.
+3. **API nondeterminism.** Even at `temperature=0`, PVI wobbles ~1 bit when the
+   label probability is near 0 or 1; don't over-read sub-bit differences there.
+4. **`attribute` needs a sensitive regime.** On a saturated text (probability
+   pinned at 0/1) every delta is ~0 — that's the regime, not a failure. Try a
+   weaker text or `--granularity sentence`.
+5. **Check faithfulness.** `optimize` is told to stay truthful and keep meaning,
    but can drift; the user must review rewrites.
-3. **Pseudo, not exact.** This is a zero-shot proxy for the paper's fine-tuned
-   V-information.
+6. **Pseudo, not exact.** A zero-shot, training-free proxy for the paper's
+   fine-tuned V-information — not a reproduction of it.
 
 ## Errors you may hit
 

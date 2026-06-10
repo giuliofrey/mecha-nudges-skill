@@ -6,27 +6,46 @@ Companion tool to "Mecha-nudges for Machines" (Frey & Ethayarajh, 2026).
 
 Background
 ----------
-Pointwise V-Information (PVI) measures how much a text reduces an AI's
-uncertainty about a decision, in bits:
+Pointwise V-Information (PVI) measures, in bits, how much a text increases the
+*predictability* of an AI agent's decision - how much usable information the text
+carries about which label the agent picks - relative to a reference prior:
 
-    PVI = H(Y | empty) - H(Y | text)
+    PVI = -log2 p_baseline(y) + log2 p_text(y) = log2[ p_text(y) / p_baseline(y) ]
 
-The paper computes this with two *fine-tuned* classifiers. Here we make a
-single, pragmatic assumption: a general instruction-tuned model already behaves
-as a competent classifier for an arbitrary task when prompted. We treat that
-model as the "V" family. This gives a *pseudo-PVI*: not identical to the paper's
-numbers, but a portable, training-free proxy that works on any task.
+`p_text(y)` is the probability the model assigns label y after reading the text;
+`p_baseline(y)` is a reference prior. PVI > 0 means the text makes the decision
+more predictable; PVI < 0 means the model predicts it better by IGNORING the text
+(the decision is less predictable than the baseline). The paper computes PVI at
+the agent's *observed* decision y; this tool fixes y = target_label, repurposing
+the same quantity to measure how much a text pushes the agent toward that decision.
+
+Two reference points are supported (`--baseline`):
+
+  * neutral (DEFAULT): a uniform prior over the labels (1/K each). PVI is then
+    "bits above chance" - 0 is uninformative, up to +log2(K) means the text
+    fully decides the label, negative means it points away. Needs no API call
+    and gives the interpretable scale the docs' thresholds assume.
+  * empty: the model's response to an empty input, p(y|empty). This is the
+    analogue of the paper's H(Y|empty), but a zero-shot prompted model answers
+    an empty input the way a *rational agent* would (e.g. "SKIP, no info"),
+    NOT with the dataset's label marginal that the paper's fine-tuned null model
+    learns. That makes p(y|empty) extreme and inflates every score, so it is an
+    opt-in diagnostic, not the default. Computed once per task+model and cached.
+
+The paper computes PVI with two *fine-tuned* classifiers. Here we make a single,
+pragmatic assumption: a general instruction-tuned model already behaves as a
+competent classifier for an arbitrary task when prompted. We treat that model as
+the "V" family. This gives a *pseudo-PVI*: a portable, training-free PROXY, not a
+reproduction of the paper's numbers.
 
 Scoring uses the OpenAI API: it reads true label logprobs with the labels
 constrained via `logit_bias` (a label-masking trick), single-shot per text.
 
-The empty-input baseline H(Y|empty) depends only on the task, so it is computed
-ONCE per task+model and cached (the same trick the paper uses to hardcode its
-baseline). Every text after that is a single model call: P(y | text).
-
 Caveats (surfaced to users by the skill):
   * Scores reflect ONE proxy model. High pseudo-PVI need not transfer to other
     agents (Goodhart's law). Absolute values are not comparable across models.
+  * The OpenAI API is not perfectly deterministic at temperature 0; PVI in the
+    near-0 / near-1 probability regime can wobble by ~1 bit run-to-run.
   * Optimized text must be checked for faithfulness; the loop is instructed to
     preserve meaning but does not guarantee it.
 
@@ -225,7 +244,9 @@ def _label_logprobs(client, model: str, messages: list[dict], labels: list[str],
 
 
 # ===========================================================================
-# Baseline H(Y | empty) - computed once per task+model, cached
+# Baseline p_baseline(y) - the PVI reference point
+#   neutral: uniform prior over labels (no model call; the default)
+#   empty:   p(y | empty input), computed once per task+model and cached
 # ===========================================================================
 def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", s)
@@ -236,7 +257,14 @@ def baseline_path(task: dict, backend) -> Path:
     return cache_dir() / f"{name}__{backend.kind}_{_slug(backend.model)}__baseline.json"
 
 
-def compute_baseline(backend, task: dict, use_cache: bool = True) -> dict:
+def compute_baseline(backend, task: dict, mode: str = "neutral", use_cache: bool = True) -> dict:
+    labels = task["labels"]
+    if mode == "neutral":
+        # Uniform prior over the labels: a max-entropy reference that makes PVI
+        # "bits above chance". Needs no API call, so nothing to cache.
+        return {lab: 1.0 / len(labels) for lab in labels}
+    # mode == "empty": the model's response to an empty input (the paper's
+    # H(Y|empty) analogue). Depends only on the task, so compute once and cache.
     path = baseline_path(task, backend)
     if use_cache and path.exists():
         return json.loads(path.read_text())
@@ -370,21 +398,23 @@ def _interpret(pvi: float, label: str) -> str:
 
 def format_human(cmd: str, out: dict) -> str:
     if cmd == "baseline":
-        lines = [f"Baseline (no input) for task '{out['task']}' via {out['model']}:"]
+        mode = out.get("baseline_mode", "empty")
+        src = "uniform prior over labels" if mode == "neutral" else "model's empty-input response"
+        lines = [f"Baseline ({mode}: {src}) for task '{out['task']}' via {out['model']}:"]
         for lab, h in out["H_yb_per_label"].items():
-            lines.append(f"  H(Y|empty) for '{lab}' = {h:+.3f} bits   (prior p={out['baseline_distribution'][lab]:.3f})")
+            lines.append(f"  surprisal for '{lab}' = {h:+.3f} bits   (prior p={out['baseline_distribution'][lab]:.3f})")
         return "\n".join(lines)
 
     if cmd == "score" and "per_record" in out:
         return (f"Scored {out['n']} texts.\n"
                 f"  pseudo V-information (mean PVI): {out['v_information']:+.3f} bits\n"
-                f"  mean H(Y|empty)={out['mean_H_yb']:.3f}  mean H(Y|text)={out['mean_H_yx']:.3f}")
+                f"  mean baseline surprisal={out['mean_H_yb']:.3f}  mean text surprisal={out['mean_H_yx']:.3f}")
 
     if cmd == "score":
         dist = "  ".join(f"{k} {v:.3f}" for k, v in out["distribution"].items())
         return (f"PVI: {out['pvi']:+.3f} bits   (decision: {out['label']}, "
                 f"p={out['p_target_given_text']:.3f})\n"
-                f"  H(Y|empty)={out['H_yb']:.3f}  ->  H(Y|text)={out['H_yx']:.3f}\n"
+                f"  baseline surprisal={out['H_yb']:.3f}  ->  text surprisal={out['H_yx']:.3f}\n"
                 f"  {_interpret(out['pvi'], out['label'])}\n"
                 f"  distribution: {dist}")
 
@@ -458,11 +488,16 @@ def main():
     ap.add_argument("--task", help="Task JSON file path or inline JSON. (Created by 'init'.)")
     ap.add_argument("--format", choices=["auto", "json", "human"], default="auto",
                     help="auto = human in a terminal, json when piped/used by an agent.")
-    ap.add_argument("--no-cache", action="store_true", help="Recompute the baseline.")
+    ap.add_argument("--baseline", choices=["neutral", "empty"], default="neutral",
+                    help="PVI reference point. neutral (default) = uniform prior over labels "
+                         "(interpretable 'bits above chance', no API call); empty = the model's "
+                         "response to an empty input (paper's H(Y|empty) analogue, inflated for "
+                         "zero-shot models).")
+    ap.add_argument("--no-cache", action="store_true", help="Recompute the empty-input baseline.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("init", help="Interactively create a task file (no coding).")
-    sub.add_parser("baseline", help="Compute & cache H(Y|empty) for the task.")
+    sub.add_parser("baseline", help="Show the PVI reference distribution (neutral or --baseline empty).")
 
     sp = sub.add_parser("score", help="PVI for one text or a dataset.")
     sp.add_argument("--text")
@@ -542,10 +577,11 @@ def _api_error_message(e: Exception) -> str:
 
 def run_command(args, task: dict, backend) -> dict:
     """Compute the baseline and dispatch the subcommand. Raises OpenAIError on API failure."""
-    baseline = compute_baseline(backend, task, use_cache=not args.no_cache)
+    baseline = compute_baseline(backend, task, args.baseline, use_cache=not args.no_cache)
 
     if args.cmd == "baseline":
         return {"task": task.get("name", "task"), "model": backend.model,
+                "baseline_mode": args.baseline,
                 "H_yb_per_label": {k: round(_bits(v), 4) for k, v in baseline.items()},
                 "baseline_distribution": {k: round(v, 4) for k, v in baseline.items()}}
     if args.cmd == "score":

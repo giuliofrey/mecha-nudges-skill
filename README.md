@@ -12,24 +12,46 @@ Use it three ways:
 
 ## What is PVI here?
 
-PVI measures, in bits, how much a text reduces an AI's uncertainty about a
-decision:
+PVI measures, in bits, how much a text increases the **predictability** of an AI
+agent's decision — how much usable information the text carries about which label
+the agent picks — relative to a reference prior:
 
 ```
-PVI = H(Y | empty) - H(Y | text)
+PVI = -log2 p_baseline(y) + log2 p_text(y) = log2[ p_text(y) / p_baseline(y) ]
 ```
 
-- `PVI > 0`  the text makes the decision more predictable (it informs the agent).
-- `PVI ~ 0`  uninformative.
-- `PVI < 0`  the text pushes the agent *away* from the target decision.
+- `PVI > 0`  the text makes the decision **more predictable** (it informs the agent).
+- `PVI ~ 0`  the text carries no usable information about the decision.
+- `PVI < 0`  the model predicts the decision **better by ignoring** the text.
+
+The paper computes PVI at the agent's *observed* decision, to measure
+predictability. This tool fixes `y = target_label`, so in practice a higher PVI
+means the text makes the agent **more likely to (predictably) choose that target**,
+and `PVI < 0` means it favors the other option — a deliberate repurposing of the
+same quantity for optimization.
+
+### The reference point (`--baseline`)
+
+The baseline `p_baseline(y)` is what PVI is measured *against*, and you can pick it:
+
+- **`neutral` (default)** — a uniform prior over the labels (`1/K` each). PVI is then
+  **"bits above chance"**: `0` is uninformative, up to `+log2(K)` means the text fully
+  decides the label, negative means it points away. This is the interpretable scale,
+  and it needs no API call.
+- **`empty`** — the model's response to an *empty* input, `p(y|empty)`. This is the
+  analogue of the paper's `H(Y|empty)`, but see the disclaimer below: a zero-shot
+  prompted model answers an empty input the way a rational agent would (often near-
+  certain), **not** with the dataset's label marginal, so it inflates every score.
+  Opt in with `--baseline empty`; it is computed once per task+model and cached in
+  `~/.config/mecha-nudge/cache/`.
 
 The paper computes this with two fine-tuned classifiers. This tool makes one
 pragmatic assumption: **a general instruction-tuned model, prompted zero-shot, is
 a good enough stand-in for that classifier on an arbitrary task.** That gives a
 training-free *pseudo-PVI* that runs entirely through an API / CLI.
 
-**Single-shot.** `H(Y|empty)` depends only on the task, so it is computed once and
-cached (in `~/.config/mecha-nudge/cache/`). After that, scoring any text is one model call.
+**Single-shot.** Scoring any text is one model call (the `empty` baseline, if used,
+is cached after the first run).
 
 ## Scorer
 
@@ -43,10 +65,10 @@ it must support `logprobs` + `logit_bias` on the Chat Completions API.
 
 ```
 pyproject.toml            # pip-installable: gives you the `mecha-nudge` command
-skills/mecha-nudge/               # the self-contained skill
+skills/mecha-nudge/       # the self-contained skill
   ├── SKILL.md            #   Claude Code skill manifest
   ├── AGENTS.md           #   full agent-facing reference
-  ├── mecha_nudge.py              #   the CLI / importable module
+  ├── mecha_nudge.py      #   the CLI / importable module
   ├── requirements.txt
   └── examples/
 INSTALL.md                # paste-the-link agent recipe
@@ -132,10 +154,13 @@ mecha-nudge --task task.json optimize --text "..." --rounds 3 --candidates 5
 
 # Score with a specific model (or set MECHA_NUDGE_MODEL once)
 mecha-nudge --task task.json --model <model-name> score --text "..."
+
+# Use the empty-input baseline instead of the neutral default (see disclaimer)
+mecha-nudge --task task.json --baseline empty score --text "..."
 ```
 
-Flags: `--model`, `--gen-model` (optimize rewriter), `--rounds`, `--candidates`,
-`--format {auto,json,human}`, `--no-cache`.
+Flags: `--baseline {neutral,empty}`, `--model`, `--gen-model` (optimize rewriter),
+`--rounds`, `--candidates`, `--format {auto,json,human}`, `--no-cache`.
 
 ## How `optimize` works
 
@@ -145,14 +170,27 @@ repeat until a round stops improving. Returns before/after PVI, the gain, and th
 full trajectory. If gains stall, raise `--candidates`, add `--rounds`, or use a
 stronger `--gen-model`.
 
-## Caveats (please read)
+## Caveats
 
-- **One-proxy risk.** Scores reflect the single `--model` you choose.
-  Re-score with another `--model` to sanity-check direction.
+This tool is a **proxy**, not a reproduction of *Mecha-nudges for Machines*. The
+numbers it prints are useful for *relative* comparison and *direction*, not as the
+paper's exact V-information. Concretely:
+
+- **No fine-tuning.** The paper estimates PVI with **two classifiers fine-tuned on
+  the task**: `g'` predicts the label from the text, and a null model `g[∅]` predicts
+  it from an empty input — so `g[∅]` learns the dataset's **label marginal `P(Y)`**
+  (≈ the class balance). This tool replaces both with a **single general model prompted
+  zero-shot**, and never trains anything. That is the one big assumption; everything
+  below follows from it.
+- **The baseline is not the paper's `H(Y|empty)`.** A zero-shot model asked to decide
+  on an *empty* input answers like a rational agent ("no info → SKIP"), which is **not**
+  the label marginal `g[∅]` would have learned. So `--baseline empty` is extreme and
+  inflates every score. The **default `neutral`** baseline (uniform prior) sidesteps
+  this by measuring *bits above chance* — interpretable, but also not the paper's
+  quantity. Either way, treat absolute bits with skepticism.
 - **Faithfulness.** `optimize` is instructed to stay truthful and preserve
-  meaning/length, but it can drift. Review rewrites before using them.
-- **Pseudo, not exact.** A zero-shot proxy for the paper's fine-tuned
-  V-information, not a reproduction of it.
+  meaning/length, but it can drift (e.g. inventing "high-quality"). Review rewrites
+  before using them.
 
 ## Model requirements
 

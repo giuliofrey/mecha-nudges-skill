@@ -15,11 +15,20 @@ error handling, example session). This file is the quick start.
 
 ## What it does
 
-PVI measures, in bits, how much a text reduces an AI's uncertainty about a
-decision: `PVI = H(Y|empty) - H(Y|text)`. Higher = the text makes the decision
-more decisive. We approximate the paper's fine-tuned classifier with a general
-model prompted zero-shot, so no training is needed and every score is a single
-model call (the empty-input baseline is computed once and cached).
+PVI measures, in bits, how much a text increases the **predictability** of the
+agent's decision (its usable information about which label the agent picks),
+relative to a reference prior: `PVI = log2[ p_text(y) / p_baseline(y) ]`. The paper
+scores the agent's *observed* decision; this tool fixes `y = target_label`, so a
+higher PVI means the text makes the agent **more likely to (predictably) choose
+the target**. We approximate the paper's fine-tuned classifier with a general model
+prompted zero-shot, so no training is needed and every score is a single model call.
+
+**Baseline (`--baseline`, a global flag).** The reference `p_baseline(y)`:
+- `neutral` (**default**) — uniform prior over labels, so PVI is *bits above chance*
+  (0 = uninformative, `+log2(K)` = fully decides, negative = points away). No API call.
+- `empty` — the model's empty-input response (the paper's `H(Y|empty)` analogue). A
+  zero-shot model treats an empty input as "no info → decline", so this is **extreme
+  and inflates scores**; opt in only as a diagnostic. Computed once per task+model and cached.
 
 ## Scorer
 
@@ -67,8 +76,8 @@ toward; required for `optimize`).
 | See which words matter | `mecha-nudge --task task.json attribute --text "..."` |
 | Improve the text | `mecha-nudge --task task.json optimize --text "..."` |
 
-Flags: `--model`, `--gen-model` (optimize rewriter), `--rounds`,
-`--candidates`, `--format {auto,json,human}`, `--no-cache`.
+Flags: `--baseline {neutral,empty}` (default neutral), `--model`, `--gen-model`
+(optimize rewriter), `--rounds`, `--candidates`, `--format {auto,json,human}`, `--no-cache`.
 
 ### 3. Read the output
 Add `--format json` when you run it so you get parseable output (auto-format
@@ -77,10 +86,16 @@ prints JSON when not in a terminal, which is your case). Translate it: report
 original->best for `optimize`. Output schemas are in `AGENTS.md`.
 
 ## Always tell the user
-1. **It's a proxy.** Reflects ONE model; may not transfer. Offer to re-score with
-   a different `--model`.
-2. **Check faithfulness.** `optimize` can drift; review rewrites.
+1. **It's a proxy, not the paper.** No fine-tuning; reflects ONE model; may not
+   transfer. Offer to re-score with a different `--model` and compare direction,
+   not absolute bits.
+2. **The default baseline is `neutral`** (bits above chance). `--baseline empty`
+   is a diagnostic and inflates the numbers — say which one a score used.
+3. **Bits near p≈0 or p≈1 are noisy** (~1 bit, API nondeterminism); don't over-read
+   sub-bit differences. `attribute` is uninformative on a saturated text (all deltas ~0).
+4. **Check faithfulness.** `optimize` can drift; review rewrites.
 
 ## Notes
-- Baseline cached in `~/.config/mecha-nudge/cache/` per task+model; `--no-cache` recomputes.
+- `--baseline empty` is cached in `~/.config/mecha-nudge/cache/` per task+model;
+  `--no-cache` recomputes it. `neutral` needs no call and no cache.
 - No task yet? `mecha-nudge init`, or adapt `examples/task.json`.
