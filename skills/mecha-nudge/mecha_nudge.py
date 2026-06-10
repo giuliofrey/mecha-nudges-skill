@@ -18,7 +18,7 @@ model as the "V" family. This gives a *pseudo-PVI*: not identical to the paper's
 numbers, but a portable, training-free proxy that works on any task.
 
 Scoring uses the OpenAI API: it reads true label logprobs with the labels
-constrained via `logit_bias` (the paper's masking trick), single-shot per text.
+constrained via `logit_bias` (a label-masking trick), single-shot per text.
 
 The empty-input baseline H(Y|empty) depends only on the task, so it is computed
 ONCE per task+model and cached (the same trick the paper uses to hardcode its
@@ -203,7 +203,7 @@ def _id_to_label(labels: list[str], enc) -> dict[int, str]:
 
 
 def _label_logprobs(client, model: str, messages: list[dict], labels: list[str], enc) -> dict:
-    """{label: probability} from constrained logprobs (paper's masking trick)."""
+    """{label: probability} from constrained logprobs (a label-masking trick)."""
     id_to_label = _id_to_label(labels, enc)
     bias = {tid: 100 for tid in id_to_label}
     resp = client.chat.completions.create(

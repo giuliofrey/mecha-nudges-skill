@@ -23,7 +23,7 @@ values. Say so when it matters.
 ## Scorer
 
 P(label) comes from the **OpenAI API**: true token logprobs with the labels
-constrained via `logit_bias` (the paper's masking trick), so the distribution is
+constrained via `logit_bias` (a label-masking trick), so the distribution is
 smooth and fine-grained - exactly what `optimize` needs to detect small gains.
 Needs `OPENAI_API_KEY` + `pip install openai tiktoken`.
 

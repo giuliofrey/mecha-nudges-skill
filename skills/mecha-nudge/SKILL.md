@@ -24,7 +24,7 @@ model call (the empty-input baseline is computed once and cached).
 ## Scorer
 
 P(label) comes from the **OpenAI API**: true label logprobs with the labels
-constrained via `logit_bias` (the paper's masking trick) - smooth and faithful.
+constrained via `logit_bias` (a label-masking trick) - smooth and faithful.
 Set the scorer with `--model <name>` or `$MECHA_NUDGE_MODEL` (there is no default); it
 must support `logprobs` + `logit_bias` on the Chat Completions API. Absolute PVI
 is **not** comparable across models - compare only within one `--model`.

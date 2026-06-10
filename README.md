@@ -34,7 +34,7 @@ cached (in `~/.config/mecha-nudge/cache/`). After that, scoring any text is one 
 ## Scorer
 
 P(label) comes from the **OpenAI API**: true token logprobs with the labels
-constrained via `logit_bias` (the paper's masking trick), giving a smooth,
+constrained via `logit_bias` (a label-masking trick), giving a smooth,
 faithful signal. Set the model with `--model <name>` or `$MECHA_NUDGE_MODEL` (no default);
 it must support `logprobs` + `logit_bias` on the Chat Completions API.
 
