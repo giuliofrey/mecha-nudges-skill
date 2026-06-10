@@ -498,39 +498,73 @@ def main():
         sys.exit("[mecha-nudge] --task is required. Run the 'init' command to create one.")
 
     task = load_task(args.task)
+
+    # Validate command arguments BEFORE any (billed) API call, so a forgotten
+    # flag is reported instantly instead of after computing the baseline.
+    if args.cmd == "score" and not args.data and not args.text:
+        sys.exit("[mecha-nudge] score needs --text or --data.")
+
     model = args.model or os.environ.get("MECHA_NUDGE_MODEL")
     if not model:
         sys.exit("[mecha-nudge] No scorer model set. Pass --model <name> or set MECHA_NUDGE_MODEL. "
                  "It must support logprobs + logit_bias on the Chat Completions API.")
     backend = OpenAIBackend(model)
+
+    try:
+        out = run_command(args, task, backend)
+    except _OpenAIError as e:
+        sys.exit(_api_error_message(e))
+
+    use_human = args.format == "human" or (args.format == "auto" and sys.stdout.isatty())
+    print(format_human(args.cmd, out) if use_human else json.dumps(out, indent=2, ensure_ascii=False))
+
+
+try:  # base class for every OpenAI SDK error; dummy fallback if the SDK is absent
+    from openai import OpenAIError as _OpenAIError
+except Exception:  # pragma: no cover
+    class _OpenAIError(Exception):
+        pass
+
+
+def _api_error_message(e: Exception) -> str:
+    """Turn a raw OpenAI exception into a clean, actionable one-liner."""
+    name = type(e).__name__
+    hint = ""
+    if name == "AuthenticationError":
+        hint = " (the API key was rejected - check OPENAI_API_KEY / --api-key / your .env)"
+    elif name in ("NotFoundError", "BadRequestError", "PermissionDeniedError"):
+        hint = (" (check --model exists and supports logprobs + logit_bias on the "
+                "Chat Completions API)")
+    elif name == "RateLimitError":
+        hint = " (rate limit or quota - wait and retry, or lower --workers)"
+    return f"[mecha-nudge] OpenAI API error: {e}{hint}"
+
+
+def run_command(args, task: dict, backend) -> dict:
+    """Compute the baseline and dispatch the subcommand. Raises OpenAIError on API failure."""
     baseline = compute_baseline(backend, task, use_cache=not args.no_cache)
 
     if args.cmd == "baseline":
-        out = {"task": task.get("name", "task"), "model": backend.model,
-               "H_yb_per_label": {k: round(_bits(v), 4) for k, v in baseline.items()},
-               "baseline_distribution": {k: round(v, 4) for k, v in baseline.items()}}
-    elif args.cmd == "score":
+        return {"task": task.get("name", "task"), "model": backend.model,
+                "H_yb_per_label": {k: round(_bits(v), 4) for k, v in baseline.items()},
+                "baseline_distribution": {k: round(v, 4) for k, v in baseline.items()}}
+    if args.cmd == "score":
         if args.data:
             texts = _read_records(args.data, args.text_field)
             results = _map_parallel(lambda t: score_text(backend, task, t, baseline), texts, args.workers)
             pvis = [r["pvi"] for r in results]
-            out = {"n": len(pvis),
-                   "v_information": round(sum(pvis) / len(pvis), 4) if pvis else 0.0,
-                   "mean_H_yb": round(sum(r["H_yb"] for r in results) / max(len(results), 1), 4),
-                   "mean_H_yx": round(sum(r["H_yx"] for r in results) / max(len(results), 1), 4),
-                   "per_record": results}
-        elif args.text:
-            out = score_text(backend, task, args.text, baseline)
-        else:
-            sys.exit("[mecha-nudge] score needs --text or --data.")
-    elif args.cmd == "attribute":
-        out = attribute(backend, task, args.text, baseline, args.granularity, args.workers)
-    elif args.cmd == "optimize":
-        out = optimize(backend, task, args.text, baseline, args.gen_model,
-                       args.rounds, args.candidates, args.workers)
-
-    use_human = args.format == "human" or (args.format == "auto" and sys.stdout.isatty())
-    print(format_human(args.cmd, out) if use_human else json.dumps(out, indent=2, ensure_ascii=False))
+            return {"n": len(pvis),
+                    "v_information": round(sum(pvis) / len(pvis), 4) if pvis else 0.0,
+                    "mean_H_yb": round(sum(r["H_yb"] for r in results) / max(len(results), 1), 4),
+                    "mean_H_yx": round(sum(r["H_yx"] for r in results) / max(len(results), 1), 4),
+                    "per_record": results}
+        return score_text(backend, task, args.text, baseline)  # --text guaranteed by the early check
+    if args.cmd == "attribute":
+        return attribute(backend, task, args.text, baseline, args.granularity, args.workers)
+    if args.cmd == "optimize":
+        return optimize(backend, task, args.text, baseline, args.gen_model,
+                        args.rounds, args.candidates, args.workers)
+    raise SystemExit(f"[mecha-nudge] unknown command: {args.cmd}")
 
 
 if __name__ == "__main__":
